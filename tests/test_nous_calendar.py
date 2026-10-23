@@ -188,10 +188,27 @@ class OnX(Base):
         path.write_text(json.dumps(payload) if not isinstance(payload, str) else payload)
         return path
 
-    def test_no_file_means_github_only(self):
-        with mock.patch.dict(os.environ, {"NOUS_CALENDAR_X_FILE": str(Path(self.tmp.name) / "missing.json")}):
+    def test_no_file_and_feed_off_means_github_only(self):
+        env = {"NOUS_CALENDAR_X_FILE": str(Path(self.tmp.name) / "missing.json"), "NOUS_CALENDAR_POSTS": "off"}
+        with mock.patch.dict(os.environ, env), mock.patch.object(n.urllib.request, "urlopen", side_effect=AssertionError("feed is off")):
             self.assertIsNone(n.src_x("2026-10"))
-        self.assertIsNone(n.src_x("2026-10"))  # default path under the plugin's data dir doesn't exist either
+
+    def test_public_feed_is_used_when_there_is_no_local_file(self):
+        body = json.dumps({"tz": LA, "updated": "2026-10-22", "days": {"2026-10-21": {"big": [{"author": "NousResearch", "views": "969K", "url": "https://x.com/a"}]}}}).encode()
+        resp = mock.MagicMock(); resp.__enter__.return_value.read.return_value = body
+        with mock.patch.dict(os.environ, {"NOUS_CALENDAR_X_FILE": str(Path(self.tmp.name) / "missing.json")}), \
+             mock.patch.object(n.urllib.request, "urlopen", return_value=resp) as get:
+            x = n.src_x("2026-10")
+            n.src_x("2026-10")                       # second read comes from the 15-minute cache
+        self.assertEqual(x["source"], "feed")
+        self.assertEqual(x["days"]["2026-10-21"]["big"][0]["views"], "969K")
+        self.assertEqual(get.call_count, 1)
+
+    def test_feed_down_keeps_the_last_copy(self):
+        cache = n.load_cache(); cache["posts_feed"] = {"at": 0, "feed": {"days": {"2026-10-02": {"team": [{"author": "Teknium"}]}}}}; n.save_cache(cache)
+        with mock.patch.dict(os.environ, {"NOUS_CALENDAR_X_FILE": str(Path(self.tmp.name) / "missing.json")}), \
+             mock.patch.object(n.urllib.request, "urlopen", side_effect=n.urllib.error.URLError("offline")):
+            self.assertIn("2026-10-02", n.src_x("2026-10")["days"])
 
     def test_reads_only_the_month_and_never_the_network(self):
         path = self.write({"tz": LA, "updated": "2026-10-22", "days": {

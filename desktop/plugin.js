@@ -213,11 +213,12 @@ function dayModel(iso, drops, xday, merged) {
   if (!head) {
     const pick = releases[releases.length - 1] || drops.find((x) => x.kind === 'official') || drops.find((x) => x.kind === 'feature') || drops.find((x) => x.kind === 'plugin-update')
     const cat = drops.filter((x) => x.kind === 'catalog').length
-    head = pick ? pick.title : cat ? `${cat} new plugin${cat === 1 ? '' : 's'} in the catalog` : ''
+    const post = [...big, ...((xday && xday.team) || [])][0]
+    head = pick ? pick.title : cat ? `${cat} new plugin${cat === 1 ? '' : 's'} in the catalog` : post ? `@${post.author}: ${post.text || ''}` : ''
   }
   const tags = (xday && xday.tags && xday.tags.length ? xday.tags : releases.map((r) => (r.id || '').replace(/^release:/, ''))).filter(Boolean)
   return { iso, drops, xday, merged: merged || 0, kinds, label, head, topViews, tags, releases,
-    by: xday ? `${xday.by || 'Nous'}${xday.time ? ` · ${xday.time}` : ''}` : drops.length ? 'GitHub' : '' }
+    by: xday && xday.head ? `${xday.by || 'Nous'}${xday.time ? ` · ${xday.time}` : ''}` : drops.length ? 'GitHub' : big.length ? 'On X' : '' }
 }
 
 // ── look ────────────────────────────────────────────────────────────────────
@@ -385,7 +386,7 @@ function DayCell({ m, n, today, future, selected, onPick }) {
   const rel = !future && types.includes('release')
   const shine = !future && (rel || m.topViews >= SHINE_VIEWS)
   const cls = ['cell', main ? `c-${main}` : '', rel ? 'rel' : '', shine ? 'shine' : '', m.iso === today ? 'today' : '', future ? 'up' : '', selected ? 'sel' : ''].filter(Boolean).join(' ')
-  const by = m.xday ? `${m.xday.by || 'Nous'}${m.xday.time ? ` · ${m.xday.time}` : ''}` : m.drops.length ? 'GitHub' : ''
+  const by = m.by
   return h('button', {
     type: 'button', className: cls, disabled: future, onClick: () => onPick(m.iso),
     'aria-label': `Day ${n}, ${fmtDay(m.iso, { weekday: 'long', month: 'long', day: 'numeric' })}${main ? `: ${TYPE_LABEL[main].toLowerCase()}` : ''}`,
@@ -397,7 +398,8 @@ function DayCell({ m, n, today, future, selected, onPick }) {
       types.includes('release') && m.tags.length ? jsx('span', { className: 'tag', children: m.tags.join(' · ') }, 'tag') : null),
   future ? h('div', { className: 'head dim' }, 'Watching Nous + Teknium…')
     : h('div', { className: `head${m.head ? '' : ' dim'}` }, m.head ? inline(m.head) : 'No drops this day'),
-  future ? null : h('div', { className: 'foot' }, h('span', null, by), m.merged ? h('span', { className: 'pr' }, `${fmtInt(m.merged)} PRs`) : null))
+  future ? null : h('div', { className: 'foot' }, h('span', null, by),
+    m.topViews ? h('span', { className: 'pr' }, `${fmtViews(m.topViews)} views`) : m.merged ? h('span', { className: 'pr' }, `${fmtInt(m.merged)} PRs`) : null))
 }
 
 const CATALOG_FOLD = 30
@@ -429,7 +431,7 @@ function DaySheet({ m, n, onClose, onStep, canPrev, canNext }) {
           h('div', null, h('div', { className: 'badges' }, ...typesOf(m).map((t) => jsx('span', { className: `b b-${t}`, children: TYPE_LABEL[t] }, t))),
             h('div', { className: 'muted' }, fmtDay(m.iso, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))))),
       h('div', { className: 'sh-body' },
-        x ? h('section', { className: 'sh-sec' },
+        x && x.head ? h('section', { className: 'sh-sec' },
           h('h3', null, icon('launch'), 'On X', h('span', null, `${x.by || 'Nous'}${x.time ? ` · ${x.time} PT` : ''}`)),
           h('ul', { className: 'bul' }, ...String(x.head || '').split(' · ').map((part, i) => jsx('li', { children: i === 0 && x.url ? jsx(LinkOut, { url: x.url, label: part.replace(/`/g, '') }) : inline(part) }, i)))) : null,
         sec('release', 'Released', of('release'), h('div', { className: 'sh-sec' }, ...of('release').map((d) => row(d)))),
@@ -491,7 +493,8 @@ function CalendarPage() {
   const first = fmtDay(isos[0], { month: 'short', day: 'numeric' })
   const last = fmtDay(isos[count - 1], { month: 'short', day: 'numeric', year: 'numeric' })
   const step = (by) => { const i = past.indexOf(pick); const nx = past[i + by]; if (nx) setPick(nx) }
-  const hasX = Boolean(d && d.x && !d.x.error)
+  const hasX = Boolean(d && d.x && !d.x.error && Object.values(xdays).some((v) => v.head || (v.types || []).length))   // curated day labels
+  const hasPosts = Boolean(d && d.x && !d.x.error && Object.values(xdays).some((v) => (v.big || []).length || (v.team || []).length))
   const updated = hasX && d.x.updated ? fmtDay(d.x.updated, { month: 'short', day: 'numeric' }) : fmtDay(today, { month: 'short', day: 'numeric' })
   const st = (k, v, small, blue) => h('div', { className: `st${blue ? ' blue' : ''}` }, h('div', { className: 'k' }, k), h('div', { className: 'v' }, v, small ? h('small', null, small) : null))
 
@@ -502,7 +505,7 @@ function CalendarPage() {
         h('div', null,
           h('h1', null, 'Hermes ', jsx('b', { children: 'Daily Drops' })),
           h('div', { className: 'sub' }, `${count} days of Hermes Agent · ${first} – ${last} · what `, h('span', null, '@NousResearch'),
-            hasX ? [' and ', jsx('span', { children: '@Teknium' }, 't'), ' shipped, plus every merged PR'] : ' shipped, plus every merged PR')),
+            hasX || hasPosts ? [' and ', jsx('span', { children: '@Teknium' }, 't'), ' shipped, the biggest posts, and every merged PR'] : ' shipped, plus every merged PR')),
         h('div', { className: 'right' },
           h('div', { className: 'handle' }, '@BkashJosi'),
           h('div', { className: 'meta' }, `Days in ${d ? d.tz : TZ} · updated through ${updated}`),
@@ -515,7 +518,7 @@ function CalendarPage() {
         st('Days logged', String(logged.length), `/ ${count}`),
         st('Releases', String(rel.length), rel.length ? `${ver(rel[0])} → ${ver(rel[rel.length - 1])}` : ''),
         st('Launches', String(launches), hasX ? 'plugins · features' : `${(d.counts || {}).official || 0} official plugins`, true),
-        hasX ? st('Free models', String(freeModels), 'days on Portal') : st('Features', String((d.counts || {}).feature || 0), 'merged on main'),
+        hasX ? st('Free models', String(freeModels), 'days on Portal') : hasPosts ? st('Big posts', String(Object.values(xdays).reduce((a, v) => a + ((v.big || []).length), 0)), `50K+ views · top ${fmtViews(Math.max(0, ...Object.values(xdays).flatMap((v) => (v.big || []).map((b) => toNum(b.views)))))}`) : st('Features', String((d.counts || {}).feature || 0), 'merged on main'),
         st('PRs merged', fmtInt(totalPRs), '', true),
         h('div', { className: 'st prog' },
           h('div', { className: 'prow' }, h('div', { className: 'k' }, 'Month progress'), h('div', { className: 'pct' }, `${pct}%`)),
@@ -538,7 +541,7 @@ function CalendarPage() {
         h('div', { className: 'legend' }, ...[['release', 'Release', 'var(--ink)'], ['launch', 'Launch', 'var(--blue)'], ['model', 'Free model', 'var(--teal)'], ['news', 'News', 'var(--gold)'], ['build', 'Build (GitHub)', 'var(--grey)']]
           .filter(([k]) => hasX || k === 'release' || k === 'launch' || k === 'build')
           .map(([k, label, c]) => jsx('span', { children: [jsx('i', { style: { background: c } }, 'i'), label] }, k))),
-        h('div', null, hasX ? 'Sources: x.com/NousResearch · x.com/Teknium · github.com/NousResearch/hermes-agent' : 'Source: github.com/NousResearch/hermes-agent · independent, not affiliated with Nous Research')) : null)),
+        h('div', null, hasX || hasPosts ? 'Sources: x.com/NousResearch · x.com/Teknium · the Hermes community on X · github.com/NousResearch/hermes-agent' : 'Source: github.com/NousResearch/hermes-agent · independent, not affiliated with Nous Research')) : null)),
     pick && models[pick] ? jsx(DaySheet, { m: models[pick], n: isos.indexOf(pick) + 1, onClose: () => setPick(null), onStep: step, canPrev: past.indexOf(pick) > 0, canNext: past.indexOf(pick) < past.length - 1 }) : null)
 }
 

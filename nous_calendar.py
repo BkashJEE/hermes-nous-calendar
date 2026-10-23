@@ -12,10 +12,10 @@ Reads public GitHub data only and makes no model calls:
 Catalog additions are exact: the plugin-catalog/ listing is read at the last catalog commit of each
 day and compared with the day before. Everything is bucketed into days in the reader's own time zone.
 
-Optional "On X" layer: a LOCAL JSON file of curated X posts (Hermes Daily Drops shape: {tz, updated, days:
-{"YYYY-MM-DD": {types, head, by, time, url, tags, team, big}}}). Nothing is fetched for it and nothing ships with
-the plugin. The file is read only if it exists: NOUS_CALENDAR_X_FILE, else <HERMES_HOME>/plugin-data/
-hermes-nous-calendar/x-drops.json. Without it the calendar is GitHub-only.
+"On X" layer: each day's biggest X posts (50K+ views) and posts by the Nous team, as links. It comes from
+the public posts feed at https://nous-calendar.vercel.app/posts.json (one GET, kept 15 minutes; set
+NOUS_CALENDAR_POSTS=off to skip it). A local curated file in the same shape wins when present:
+NOUS_CALENDAR_X_FILE, else <HERMES_HOME>/plugin-data/hermes-nous-calendar/x-drops.json.
 
 GitHub access, in order: the `gh` CLI if it is signed in, else GITHUB_TOKEN / GH_TOKEN, else anonymous.
 Anonymous GitHub allows 60 calls an hour, so without a sign-in the catalog falls back to reading
@@ -41,7 +41,7 @@ import urllib.request
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 CORE = "NousResearch/hermes-agent"
 OFFICIAL = "NousResearch/hermes-official-plugins"
 CATALOG_DIR = "plugin-catalog"
@@ -68,6 +68,13 @@ PR_REF_RE = re.compile(r"\s*\(#\d+\)\s*$")
 # "add X to the plugin catalog" PRs are catalog additions, which the catalog diff already shows
 CATALOG_TITLE_RE = re.compile(r"\b(?:plugin[- ]catalog|catalog entry)\b|^(?:add|pin|re-?pin|bump)\b.*\bcatalog\b", re.I)
 ADD_RE = re.compile(r"\badd(?:s|ed)?\s+(?:plugin\s+)?[`'\"]?([a-z0-9][a-z0-9._-]{1,60})[`'\"]?", re.I)
+
+
+POSTS_FEED = os.environ.get("NOUS_CALENDAR_POSTS_URL") or "https://nous-calendar.vercel.app/posts.json"
+
+
+def posts_enabled() -> bool:
+    return os.environ.get("NOUS_CALENDAR_POSTS", "on").strip().lower() not in ("0", "off", "false", "no")
 
 
 def x_file() -> Path | None:
@@ -346,21 +353,46 @@ def merged_counts(start: dt.datetime, end: dt.datetime, tz: dt.tzinfo, now: dt.d
     return out
 
 
-def src_x(month: str) -> dict | None:
-    """The day entries of the local On-X file that fall in `month` (its days are in the file's own tz),
-    or None when there is no file. A broken file is reported, never fatal."""
-    path = x_file()
-    if path is None:
+def _x_feed() -> dict | None:
+    """The public posts feed, kept 15 minutes in the cache. None when it is off or unreachable."""
+    if not posts_enabled():
         return None
+    cache = load_cache()
+    hit = cache.get("posts_feed")
+    if hit and time.time() - hit.get("at", 0) < FRESH_S:
+        return hit["feed"]
+    req = urllib.request.Request(POSTS_FEED, headers={"User-Agent": f"hermes-nous-calendar/{VERSION}", "Accept": "application/json"})
     try:
-        feed = json.loads(path.read_text(encoding="utf-8"))
-        days = feed["days"]
-        if not isinstance(days, dict):
-            raise TypeError
-    except (OSError, ValueError, KeyError, TypeError):
-        return {"error": f"couldn't read {path.name}", "days": {}}
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            feed = json.loads(resp.read().decode("utf-8"))
+        if not isinstance(feed, dict) or not isinstance(feed.get("days"), dict):
+            raise ValueError("unexpected shape")
+    except (urllib.error.URLError, ValueError, OSError):
+        return hit["feed"] if hit else None          # stale beats nothing; nothing beats an error
+    cache["posts_feed"] = {"at": time.time(), "feed": feed}
+    save_cache(cache)
+    return feed
+
+
+def src_x(month: str) -> dict | None:
+    """The "On X" days of `month` (days are in the feed's own tz, Pacific): the local curated file when
+    present, else the public posts feed. None when neither is available; a broken local file is reported."""
+    path = x_file()
+    if path is not None:
+        try:
+            feed = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(feed.get("days"), dict):
+                raise TypeError
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return {"error": f"couldn't read {path.name}", "days": {}}
+        source = "local"
+    else:
+        feed = _x_feed()
+        if feed is None:
+            return None
+        source = "feed"
     return {"tz": feed.get("tz") or "America/Los_Angeles", "updated": feed.get("updated"), "big_min": feed.get("bigMin"),
-            "days": {d: v for d, v in days.items() if d.startswith(month) and isinstance(v, dict)}}
+            "source": source, "days": {d: v for d, v in feed["days"].items() if d.startswith(month) and isinstance(v, dict)}}
 
 
 def _semver(text: str) -> tuple[int, ...] | None:

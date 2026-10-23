@@ -3,7 +3,10 @@
 
     python3 web/build.py [--months 3]
 
-Public GitHub data only. The On-X layer and "your Hermes version" are stripped, whatever this machine has.
+GitHub data plus a public posts feed: each day's biggest X posts (50K+ views) and posts by the Nous team,
+taken from the curated file with --posts (default: the local Daily Drops file when it exists), else from the
+live site's own posts.json (so a CI build keeps the posts it can't see). Only those posts are published:
+no headlines, notes or day labels, and never the maintainer's own posts. "Your Hermes version" is stripped.
 Deploy dist/ anywhere static (vercel.json is set up for Vercel).
 """
 import argparse
@@ -21,10 +24,46 @@ sys.path.insert(0, str(ROOT))
 import nous_calendar as n  # noqa: E402
 
 
+PRIVATE = Path.home() / "Claude/videos/hermes-drops/private/hermes-drops.json"
+LIVE = "https://nous-calendar.vercel.app/posts.json"
+OWN = {"bkashjosi"}                     # never publish the maintainer's own posts
+
+
+def public_posts(src: dict) -> dict:
+    """Only posts by others: team posts (Nous / Teknium) and the biggest posts, nothing curated."""
+    keep = ("author", "time", "url", "text", "views", "likes", "repost")
+    days = {}
+    for day, v in sorted((src.get("days") or {}).items()):
+        if not isinstance(v, dict):
+            continue
+        clean = {k: [{f: p[f] for f in keep if f in p} for p in v.get(k) or []
+                     if isinstance(p, dict) and str(p.get("author", "")).lower() not in OWN and str(p.get("url", "")).startswith("https://x.com/")]
+                 for k in ("team", "big")}
+        clean = {k: x for k, x in clean.items() if x}
+        if clean:
+            days[day] = clean
+    return {"version": 1, "kind": "hermes-posts", "tz": src.get("tz") or "America/Los_Angeles", "updated": src.get("updated"),
+            "bigMin": src.get("bigMin", 50000), "source": "Public X posts by @NousResearch, @Teknium and the Hermes community; picked by @BkashJosi",
+            "days": days}
+
+
+def load_posts(path: str | None) -> dict | None:
+    if path or PRIVATE.exists():
+        return public_posts(json.loads(Path(path or PRIVATE).read_text()))
+    try:
+        import urllib.request
+        with urllib.request.urlopen(LIVE, timeout=20) as r:
+            return public_posts(json.loads(r.read().decode()))
+    except Exception as e:
+        print(f"no posts feed ({e}); building GitHub-only")
+        return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--months", type=int, default=3, help="this month and the N-1 before it")
     ap.add_argument("--tz", default="America/Los_Angeles")
+    ap.add_argument("--posts", help="curated Daily Drops JSON to take public posts from")
     args = ap.parse_args()
     dist = WEB / "dist"
     shutil.rmtree(dist, ignore_errors=True)
@@ -39,10 +78,15 @@ def main() -> int:
         while m < 1:
             y, m = y - 1, m + 12
         months.append(f"{y}-{m:02d}")
+    posts = load_posts(args.posts)
+    if posts:
+        (dist / "posts.json").write_text(json.dumps(posts, separators=(",", ":")))
+        print(f"posts.json: {len(posts['days'])} days")
     for month in months:
         d = n.collect(month, args.tz, force=(month == months[0]))
-        d.pop("x", None)
         d.pop("you", None)
+        d["x"] = {"tz": posts["tz"], "updated": posts["updated"], "big_min": posts["bigMin"],
+                  "days": {k: v for k, v in posts["days"].items() if k.startswith(month)}} if posts else None
         d["auth"] = "public"
         (dist / "data" / f"{month}.json").write_text(json.dumps(d, separators=(",", ":")))
         print(f"{month}: {sum(d['counts'].values())} drops, errors {d['errors'] or 'none'}")

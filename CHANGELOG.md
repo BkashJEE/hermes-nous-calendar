@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0
+
+- **The biggest posts from X on every day**: posts with 50K+ views and posts by the Nous team, with views and links, from the public feed at nous-calendar.vercel.app/posts.json (`NOUS_CALENDAR_POSTS=off` to skip). The day's corner shows the top post's views.
+- **On the web, live**: https://nous-calendar.vercel.app (phones too).
+
 ## 0.1.0
 
 First release.

@@ -62,24 +62,19 @@ hermes nous-calendar --month 2026-10
 /nous-calendar                        # the same, in any Hermes chat
 ```
 
-## Optional: an "On X" layer from your own file
+## The biggest posts, from X
 
-If you keep a curated record of what Nous and Teknium posted on X, the calendar can show it next to the GitHub drops: the day's headline in the cell, the top post's views in the corner, and "On X", "Biggest posts" and "Team posts" sections in the day sheet.
+Each day also lists **the biggest posts about Hermes on X** (50K+ views) and **posts by the Nous team**, with their view counts and links. The day's corner shows the top post's views. They come from a small public feed, `https://nous-calendar.vercel.app/posts.json`, picked each morning from public posts by @NousResearch, @Teknium and the Hermes community. The plugin reads it once every 15 minutes at most; set `NOUS_CALENDAR_POSTS=off` to turn it off. It never sends anything.
 
-The plugin never fetches X data and ships none. It reads one local JSON file, only if it exists:
-
-- `NOUS_CALENDAR_X_FILE=/path/to/file.json` in your Hermes `.env`, or
-- `~/.hermes/plugin-data/hermes-nous-calendar/x-drops.json`
-
-Shape: `{"tz": "America/Los_Angeles", "updated": "2026-10-22", "days": {"2026-10-21": {"types": ["release", "launch"], "head": "Item one · item two", "by": "Nous", "time": "1:50 PM", "url": "https://x.com/…", "tags": ["v0.22.4"], "team": [{"author", "time", "url", "text", "repost"}], "big": [{"author", "time", "url", "text", "views"}]}}}`. Types: `release`, `launch`, `model` (free model), `news`, `build`. Without the file, the calendar is GitHub-only and says so.
+If you keep your own curated file in the same shape, the plugin uses it instead: `NOUS_CALENDAR_X_FILE=/path/to/file.json` or `~/.hermes/plugin-data/hermes-nous-calendar/x-drops.json`.
 
 ## What it reads and stores
 
-- **Reads:** public GitHub data only, through your signed-in `gh` if there is one, else `GITHUB_TOKEN`/`GH_TOKEN`, else anonymously. Plus your local On-X file if you set one up.
+- **Reads:** public GitHub data, through your signed-in `gh` if there is one, else `GITHUB_TOKEN`/`GH_TOKEN`, else anonymously; and the public posts feed (`NOUS_CALENDAR_POSTS=off` to skip it).
 - **Model calls:** none. The tool only returns data; your own model writes the answer when you ask in chat.
 - **Stores:** one cache file (GitHub data only; the On-X file is re-read, never copied), `~/.hermes/plugin-data/hermes-nous-calendar/cache.json`. Finished months are kept; the current month is re-read at most every 15 minutes, plus the 6-hour background read.
 - **Runs in the background:** one thread in the plugin's backend, which wakes every 30 minutes and reads GitHub at most every 6 hours.
-- **Sends:** nothing anywhere. Notifications are local desktop notifications.
+- **Sends:** nothing anywhere. Two kinds of GET (GitHub, the posts feed); notifications are local desktop notifications.
 
 ## Limits
 
@@ -92,7 +87,7 @@ Shape: `{"tz": "America/Los_Angeles", "updated": "2026-10-22", "days": {"2026-10
 Live: **https://nous-calendar.vercel.app**
 
 
-`web/` builds the same page as a static site from public GitHub data only (no X layer, no version check):
+`web/` builds the same page as a static site: GitHub data plus the public posts (no version check):
 
 ```bash
 python3 web/build.py --months 3     # writes web/dist/
