@@ -56,6 +56,8 @@ function fontFaces() {
 let pluginCtx = null
 let backend = null              // 'rest' | 'cli', once one has answered
 let os = null
+let isWeb = false            // the public web build (web/), not Hermes Desktop
+const INSTALL = 'hermes plugins install BkashJEE/hermes-nous-calendar --enable'
 
 async function resolveRoute() {
   const routes = await host.profileRoutes()
@@ -451,6 +453,14 @@ function DaySheet({ m, n, onClose, onStep, canPrev, canNext }) {
           h('div', { className: 'muted' }, 'Every pull request merged into NousResearch/hermes-agent that day, counted, not listed.')))))
 }
 
+function GetIt() {
+  const [done, setDone] = useState(false)
+  return h('div', { className: 'behind' },
+    h('div', { className: 'big' }, 'Get it inside ', jsx('b', { children: 'Hermes Desktop' })),
+    h('div', { className: 'what' }, 'The same calendar as a Hermes plugin: it updates itself, pings you when Nous ships a release, and Hermes can answer "what did Nous ship today?" in any chat.'),
+    h('button', { type: 'button', className: 'cmd', onClick: async () => { if (await copyText(INSTALL)) { setDone(true); setTimeout(() => setDone(false), 2000) } } }, done ? 'Copied ✓' : 'Copy install command'))
+}
+
 function CalendarPage() {
   const s = useStore()
   const [pick, setPick] = useState(null)
@@ -516,12 +526,13 @@ function CalendarPage() {
       d && Object.keys(d.errors || {}).length ? h('div', { className: 'warn' }, `Couldn't read: ${Object.entries(d.errors).map(([k, v]) => `${k} (${v})`).join(' · ')}`) : null,
       d && d.auth === 'anonymous' ? h('div', { className: 'warn' }, 'Not signed in to GitHub: catalog additions come from commit messages and merged-PR counts are off. Run `gh auth login` for exact data.') : null,
       d && d.x && d.x.error ? h('div', { className: 'warn' }, `On X file unreadable (${d.x.error}). GitHub drops still show.`) : null,
-      d && d.you && d.you.behind && d.you.behind.length ? h('div', { className: 'behind' },
+      isWeb ? jsx(GetIt, {}) : null,
+      !isWeb && d && d.you && d.you.behind && d.you.behind.length ? h('div', { className: 'behind' },
         h('div', { className: 'big' }, `You're on ${d.you.installed} · `, jsx('b', { children: `${d.you.behind.length} release${d.you.behind.length === 1 ? '' : 's'} behind` })),
         h('div', { className: 'what' }, 'New since your version: ', ...d.you.behind.slice(0, 4).flatMap((r, i) => [i ? ', ' : '', jsx(LinkOut, { url: r.url, label: r.version }, r.version)]),
           d.you.behind.length > 4 ? ` and ${d.you.behind.length - 4} more` : '', '. Read the notes, then update.'),
         h('button', { type: 'button', className: 'cmd', onClick: () => copyText('hermes update') }, 'Copy: hermes update')) : null,
-      d && d.you && d.you.behind && !d.you.behind.length ? h('div', { className: 'uptodate' }, `✓ You're on the latest Hermes release, ${d.you.installed}.`) : null,
+      !isWeb && d && d.you && d.you.behind && !d.you.behind.length ? h('div', { className: 'uptodate' }, `✓ You're on the latest Hermes release, ${d.you.installed}.`) : null,
       d ? h('main', { className: 'grid' }, ...isos.map((iso, i) => jsx(DayCell, { m: models[iso], n: i + 1, today, future: iso > today, selected: pick === iso, onPick: setPick }, iso))) : null,
       d ? h('footer', null,
         h('div', { className: 'legend' }, ...[['release', 'Release', 'var(--ink)'], ['launch', 'Launch', 'var(--blue)'], ['model', 'Free model', 'var(--teal)'], ['news', 'News', 'var(--gold)'], ['build', 'Build (GitHub)', 'var(--grey)']]
@@ -557,6 +568,7 @@ export default {
   register(ctx) {
     os = ctx.os || null
     pluginCtx = ctx
+    isWeb = Boolean(ctx.web)
     ctx.register({ id: 'page', area: ROUTES_AREA, data: { path: ROUTE }, render: () => jsx(CalendarPage, {}) })
     ctx.register({ id: 'nav', area: SIDEBAR_NAV_AREA, order: 87, data: { path: ROUTE, label: 'Nous Calendar', codicon: 'calendar' } })
     ctx.register({ id: 'open', area: PALETTE_AREA, data: { id: `${ID}.open`, label: 'Open Nous Calendar', keywords: ['nous', 'calendar', 'release', 'changelog', 'drops', 'daily drops', 'what shipped', 'catalog'], run: () => host.navigate(ROUTE) } })

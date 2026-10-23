@@ -1,0 +1,31 @@
+# Rebuild the public page every morning and deploy it to Vercel.
+# Needs three repository secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID.
+# Without them the job builds and stops before deploying.
+name: web
+on:
+  schedule:
+    - cron: "15 14 * * *"   # 07:15 Pacific (daylight time), after the morning's drops
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build (public GitHub data only)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 web/build.py --months 3
+      - name: Deploy to Vercel
+        if: ${{ env.VERCEL_TOKEN != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          cp web/vercel.json web/dist/vercel.json
+          npx --yes vercel@latest deploy web/dist --prod --yes --token "$VERCEL_TOKEN"

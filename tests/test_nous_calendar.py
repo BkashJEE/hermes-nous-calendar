@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ["NOUS_CALENDAR_NO_BACKGROUND"] = "1"
 import nous_calendar as n  # noqa: E402
+n.SEARCH_PACE_S = 0
 
 try:
     from fastapi import FastAPI

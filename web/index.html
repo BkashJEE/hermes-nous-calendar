@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hermes Daily Drops · Nous Calendar</title>
+<meta name="description" content="What Nous Research shipped for Hermes Agent, day by day: releases, official plugins, features and new catalog plugins. Also a Hermes Desktop plugin.">
+<meta property="og:title" content="Hermes Daily Drops">
+<meta property="og:description" content="What Nous shipped for Hermes Agent, day by day. Install it in Hermes Desktop: hermes plugins install BkashJEE/hermes-nous-calendar">
+<meta name="theme-color" content="#f3f6fd">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0c0a'/%3E%3Ctext x='32' y='44' font-family='Impact,sans-serif' font-size='34' fill='%230a4cff' text-anchor='middle'%3EDD%3C/text%3E%3C/svg%3E">
+<script type="importmap">{"imports":{"react":"https://esm.sh/react@19.1.0","react/jsx-runtime":"https://esm.sh/react@19.1.0/jsx-runtime","react-dom/client":"https://esm.sh/react-dom@19.1.0/client?deps=react@19.1.0","@hermes/plugin-sdk":"./sdk-shim.js"}}</script>
+<style>html,body{margin:0;height:100%;background:#f3f6fd}#root{height:100dvh}</style>
+</head><body><div id="root"></div>
+<noscript>Hermes Daily Drops needs JavaScript. The same calendar ships as a Hermes Desktop plugin: github.com/BkashJEE/hermes-nous-calendar</noscript>
+<script type="module">
+import { createRoot } from 'react-dom/client'
+import plugin from './plugin.js'
+import { restCall } from './sdk-shim.js'
+const reg = []
+const ctx = { web: true, rest: restCall, os: null, register: (c) => { reg.push(c); return () => {} },
+  setInterval: (f, ms) => { const t = setInterval(f, ms); return () => clearInterval(t) },
+  addEventListener: (t, e, f) => { t.addEventListener(e, f); return () => t.removeEventListener(e, f) } }
+plugin.register(ctx)
+createRoot(document.getElementById('root')).render(reg.find((c) => c.area === 'routes').render())
+</script></body></html>

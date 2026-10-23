@@ -39,6 +39,9 @@ You don't have to open anything for it to stay up to date.
 - **Every 30 minutes** Hermes Desktop picks up what the backend found.
 - **A desktop notification** fires for each new release and each new official plugin. It never fires on the first launch.
 - **The status-bar chip** (☤) counts releases, official plugins and features since you last opened the page.
+- **"You're N releases behind"**: the page compares your installed Hermes with the newest stable release, lists what you missed and copies `hermes update` for you.
+
+Links open in Hermes Desktop's own browser pane, like links in chat (Ctrl/⌘-click for your system browser). Every new plugin in a day's sheet has a copy-the-install-command button.
 
 ## Ask Hermes
 
@@ -83,6 +86,16 @@ Shape: `{"tz": "America/Los_Angeles", "updated": "2026-10-22", "days": {"2026-10
 - "Feature" means a PR titled `feat(…)`. A feature that Nous merged under another title isn't badged; it's still in that day's merged count.
 - A merged feature is on `main`. It isn't in a release until a release says so.
 - Days are local: a late-evening release in your time zone may be the next day on GitHub.
+
+## On the web (phones too)
+
+`web/` builds the same page as a static site from public GitHub data only (no X layer, no version check):
+
+```bash
+python3 web/build.py --months 3     # writes web/dist/
+```
+
+`.github/workflows/web.yml` rebuilds it every morning and deploys `web/dist` to Vercel once the repo has `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` secrets. On the web the page shows a "Get it inside Hermes Desktop" bar with the install command.
 
 ## Development
 

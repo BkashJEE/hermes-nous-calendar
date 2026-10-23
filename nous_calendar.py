@@ -50,6 +50,7 @@ HERMES = Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
 DATA = HERMES / "plugin-data" / "hermes-nous-calendar"
 CACHE = DATA / "cache.json"
 FRESH_S = 15 * 60          # the current month is re-read at most this often
+SEARCH_PACE_S = 2.1       # GitHub search: 30 requests a minute
 MAX_PAGES = 10             # GitHub caps search at 1,000 results; 10 pages of 100
 
 KINDS = {
@@ -104,8 +105,19 @@ def auth_mode() -> str:
     return "token" if _token() else "anonymous"
 
 
-def api(path: str, params: dict | None = None):
-    """GET one GitHub REST path (no leading slash) and return the decoded JSON."""
+def api(path: str, params: dict | None = None, _retry: bool = True):
+    """GET one GitHub REST path (no leading slash) and return the decoded JSON. Search allows 30 calls a
+    minute; one rate-limit answer waits a minute and tries again once."""
+    try:
+        return _api(path, params)
+    except GitHubError as e:
+        if _retry and "rate limit" in str(e).lower():
+            time.sleep(62)
+            return api(path, params, _retry=False)
+        raise
+
+
+def _api(path: str, params: dict | None = None):
     query = urllib.parse.urlencode(params or {})
     full = f"{path}?{query}" if query else path
     if auth_mode() == "gh":
@@ -328,6 +340,7 @@ def merged_counts(start: dt.datetime, end: dt.datetime, tz: dt.tzinfo, now: dt.d
         if key not in store or nxt > now:
             q = f"repo:{CORE} is:pr is:merged merged:{iso_z(day)}..{iso_z(nxt)}"
             store[key] = int(api("search/issues", {"q": q, "per_page": 1}).get("total_count") or 0)
+            time.sleep(SEARCH_PACE_S)
         out[str(day.date())] = store[key]
         day = nxt
     return out
