@@ -128,12 +128,26 @@ def paged(path: str, params: dict, key: str | None = None) -> list:
 
 
 # ── time ────────────────────────────────────────────────────────────────────
+def local_zone_name() -> str | None:
+    """This machine's IANA zone name (so the CLI, the agent tool and the page share one cache key)."""
+    if os.environ.get("TZ", "").strip(":"):
+        return os.environ["TZ"].strip(":")
+    try:
+        target = os.path.realpath("/etc/localtime")
+        if "zoneinfo/" in target:
+            return target.split("zoneinfo/", 1)[1]
+    except OSError:
+        pass
+    return None
+
+
 def zone(name: str | None) -> dt.tzinfo:
-    if name:
-        try:
-            return ZoneInfo(name)
-        except (ZoneInfoNotFoundError, ValueError):
-            pass
+    for candidate in (name, local_zone_name()):
+        if candidate:
+            try:
+                return ZoneInfo(candidate)
+            except (ZoneInfoNotFoundError, ValueError):
+                pass
     return dt.datetime.now().astimezone().tzinfo or dt.timezone.utc
 
 
@@ -271,7 +285,7 @@ def src_features(start: dt.datetime, end: dt.datetime) -> list[dict]:
         scope = ((m.group(1) if m else "") or "").strip()
         if not m or not merged or scope.lower() in QUIET_SCOPES:
             continue
-        out.append({"id": f"feature:{it.get('number')}", "kind": "feature", "at": merged, "title": m.group(2).strip(),
+        out.append({"id": f"feature:{it.get('number')}", "kind": "feature", "at": merged, "title": PR_REF_RE.sub("", m.group(2).strip()),
                     "detail": f"{scope} · #{it.get('number')}" if scope else f"#{it.get('number')}", "scope": scope,
                     "url": it.get("html_url"), "repo": CORE})
     return out
@@ -332,6 +346,8 @@ def collect(month: str | None = None, tz_name: str | None = None, force: bool = 
         raise ValueError("month must look like 2026-10")
     start, end = month_window(month, tz)
     cache = load_cache()
+    if tz_name and isinstance(tz, ZoneInfo):
+        cache["page_tz"] = tz_name
     key = f"{month}|{tz}"
     hit = cache.get("months", {}).get(key)
     if hit and not force and (end <= now or time.time() - hit.get("generated", 0) < FRESH_S):
@@ -370,6 +386,61 @@ def collect(month: str | None = None, tz_name: str | None = None, force: bool = 
     return result
 
 
+def compact(data: dict) -> dict:
+    """Catalog additions reduced to their names; the page rebuilds the links."""
+    slim = [{k: d[k] for k in ("id", "kind", "day", "at", "title", "label", "major")} if d["kind"] == "catalog" else d
+            for d in data["drops"]]
+    return {**data, "drops": slim}
+
+
+def summary(period: str = "week", tz_name: str | None = None) -> dict:
+    """What the agent tool returns: drops of today / the last 7 days / a month, grouped by day,
+    catalog additions as names so a busy day doesn't flood the context."""
+    tz = zone(tz_name)
+    today = dt.datetime.now(tz).date()
+    if re.fullmatch(r"\d{4}-\d{2}", period or ""):
+        data, keep = collect(period, tz_name), None
+    else:
+        days = 1 if period == "today" else 7
+        data = collect(None, tz_name)
+        if today.day < days:
+            older = collect((today.replace(day=1) - dt.timedelta(days=1)).strftime("%Y-%m"), tz_name)
+            data = {**data, "drops": older["drops"] + data["drops"], "merged": {**older["merged"], **data["merged"]}}
+        keep = {str(today - dt.timedelta(n)) for n in range(days)}
+    out: dict[str, dict] = {}
+    for d in data["drops"]:
+        if keep is not None and d["day"] not in keep:
+            continue
+        day = out.setdefault(d["day"], {"merged_prs": data["merged"].get(d["day"])})
+        if d["kind"] == "catalog":
+            day.setdefault("new_in_catalog", []).append(d["title"])
+        else:
+            day.setdefault(d["kind"].replace("-", "_") + "s", []).append(
+                {"title": d["title"], "detail": d.get("detail") or "", "url": d.get("url") or ""})
+    return {"period": period, "time_zone": data["tz"], "today": str(today), "days": out,
+            "source": "public GitHub: NousResearch/hermes-agent and NousResearch/hermes-official-plugins",
+            "errors": data.get("errors") or {}}
+
+
+BG_EVERY_S = 6 * 3600
+
+
+def background_refresh() -> bool:
+    """Re-read the current month if nobody did in the last 6 hours (any process, any profile that
+    shares this cache). Returns True when it read GitHub. Called by the backend's daily refresher."""
+    cache = load_cache()
+    if time.time() - cache.get("bg_at", 0) < BG_EVERY_S:
+        return False
+    cache["bg_at"] = time.time()
+    save_cache(cache)          # claim the slot first so parallel gateways don't all read GitHub
+    tz_name = cache.get("page_tz")
+    collect(None, tz_name, force=True)
+    today = dt.datetime.now(zone(tz_name)).date()
+    if today.day <= 2:         # the first days of a month also settle last month
+        collect((today.replace(day=1) - dt.timedelta(days=1)).strftime("%Y-%m"), tz_name, force=True)
+    return True
+
+
 # ── text output ─────────────────────────────────────────────────────────────
 def render(data: dict, days: int | None = None) -> str:
     drops = data["drops"]
@@ -405,13 +476,14 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("--today", action="store_true", help="only today's drops")
     p.add_argument("--week", action="store_true", help="only the last 7 days")
     p.add_argument("--refresh", action="store_true", help="ignore the 15-minute cache")
+    p.add_argument("--compact", action="store_true", help="with --json: catalog additions as names only (fits cli.exec's output cap)")
 
 
 def dispatch(args) -> str:
     month, tz = getattr(args, "month", None), getattr(args, "tz", None)
     data = collect(month, tz, bool(getattr(args, "refresh", False)))
     if getattr(args, "json", False):
-        return json.dumps(data)
+        return json.dumps(compact(data) if getattr(args, "compact", False) else data)
     days = 1 if getattr(args, "today", False) else 7 if getattr(args, "week", False) else None
     if days == 7 and not month and dt.date.fromisoformat(data["today"]).day < 7:
         # the last 7 days reach into last month
