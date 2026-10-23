@@ -115,7 +115,8 @@ class Features(Base):
             return {"number": num, "title": title, "html_url": f"https://github.com/x/pull/{num}",
                     "pull_request": {"merged_at": "2026-10-05T16:00:00Z"}}
         self.gh.features = [pr(1, "feat(desktop): a new pane (#1)"), pr(2, "feat(ci): pin buildx"),
-                            pr(3, "fix: not a feature"), pr(4, "feat: voice input")]
+                            pr(3, "fix: not a feature"), pr(4, "feat: voice input"),
+                            pr(5, "feat: add hermes-activity to plugin catalog"), pr(6, "feat(plugins): add Tameru 1.4.1 to the plugin catalog")]
         start, end = n.month_window("2026-10", n.zone(LA))
         out = n.src_features(start, end)
         self.assertEqual([d["title"] for d in out], ["a new pane", "voice input"])
@@ -178,6 +179,40 @@ class Summary(Base):
         self.assertEqual(day["releases"][0]["title"], "v9")
         self.assertEqual(day["merged_prs"], 40)
         self.assertEqual(len(s["days"]), 1)
+
+
+class OnX(Base):
+    def write(self, payload):
+        path = Path(self.tmp.name) / "x.json"
+        path.write_text(json.dumps(payload) if not isinstance(payload, str) else payload)
+        return path
+
+    def test_no_file_means_github_only(self):
+        with mock.patch.dict(os.environ, {"NOUS_CALENDAR_X_FILE": str(Path(self.tmp.name) / "missing.json")}):
+            self.assertIsNone(n.src_x("2026-10"))
+        self.assertIsNone(n.src_x("2026-10"))  # default path under the plugin's data dir doesn't exist either
+
+    def test_reads_only_the_month_and_never_the_network(self):
+        path = self.write({"tz": LA, "updated": "2026-10-22", "days": {
+            "2026-10-21": {"types": ["release", "launch"], "head": "A · B", "big": [{"author": "x", "views": "969K"}]},
+            "2026-09-30": {"types": ["news"], "head": "old"}}})
+        with mock.patch.dict(os.environ, {"NOUS_CALENDAR_X_FILE": str(path)}), \
+             mock.patch.object(n.urllib.request, "urlopen", side_effect=AssertionError("no network for X")):
+            x = n.src_x("2026-10")
+        self.assertEqual(list(x["days"]), ["2026-10-21"])
+        self.assertEqual(x["updated"], "2026-10-22")
+
+    def test_a_broken_file_is_reported_not_fatal(self):
+        path = self.write("{not json")
+        with mock.patch.dict(os.environ, {"NOUS_CALENDAR_X_FILE": str(path)}):
+            self.assertIn("couldn't read", n.src_x("2026-10")["error"])
+
+    def test_x_layer_is_attached_but_never_cached(self):
+        path = self.write({"days": {"2026-10-02": {"types": ["launch"], "head": "secret curated line"}}})
+        with mock.patch.dict(os.environ, {"NOUS_CALENDAR_X_FILE": str(path)}):
+            d = n.collect("2026-10", LA)
+        self.assertIn("2026-10-02", d["x"]["days"])
+        self.assertNotIn("secret curated line", n.CACHE.read_text())
 
 
 class Background(Base):

@@ -12,6 +12,11 @@ Reads public GitHub data only and makes no model calls:
 Catalog additions are exact: the plugin-catalog/ listing is read at the last catalog commit of each
 day and compared with the day before. Everything is bucketed into days in the reader's own time zone.
 
+Optional "On X" layer: a LOCAL JSON file of curated X posts (Hermes Daily Drops shape: {tz, updated, days:
+{"YYYY-MM-DD": {types, head, by, time, url, tags, team, big}}}). Nothing is fetched for it and nothing ships with
+the plugin. The file is read only if it exists: NOUS_CALENDAR_X_FILE, else <HERMES_HOME>/plugin-data/
+hermes-nous-calendar/x-drops.json. Without it the calendar is GitHub-only.
+
 GitHub access, in order: the `gh` CLI if it is signed in, else GITHUB_TOKEN / GH_TOKEN, else anonymous.
 Anonymous GitHub allows 60 calls an hour, so without a sign-in the catalog falls back to reading
 commit messages and the per-day merged count is skipped.
@@ -59,7 +64,16 @@ MAJOR = ("release", "official")       # the kinds worth a desktop notification
 QUIET_SCOPES = {"ci", "test", "tests", "deps", "build", "chore", "lint", "plugin-catalog", "catalog", "release"}
 FEAT_RE = re.compile(r"^feat(?:\(([^)]*)\))?!?:\s*(.+)$", re.I)
 PR_REF_RE = re.compile(r"\s*\(#\d+\)\s*$")
+# "add X to the plugin catalog" PRs are catalog additions, which the catalog diff already shows
+CATALOG_TITLE_RE = re.compile(r"\b(?:plugin[- ]catalog|catalog entry)\b|^(?:add|pin|re-?pin|bump)\b.*\bcatalog\b", re.I)
 ADD_RE = re.compile(r"\badd(?:s|ed)?\s+(?:plugin\s+)?[`'\"]?([a-z0-9][a-z0-9._-]{1,60})[`'\"]?", re.I)
+
+
+def x_file() -> Path | None:
+    """The local On-X file, if one is configured or present. Never a URL."""
+    raw = os.environ.get("NOUS_CALENDAR_X_FILE", "").strip()
+    path = Path(raw).expanduser() if raw else DATA / "x-drops.json"
+    return path if path.is_file() else None
 
 
 class GitHubError(RuntimeError):
@@ -283,7 +297,7 @@ def src_features(start: dt.datetime, end: dt.datetime) -> list[dict]:
         m = FEAT_RE.match((it.get("title") or "").strip())
         merged = (it.get("pull_request") or {}).get("merged_at") or it.get("closed_at")
         scope = ((m.group(1) if m else "") or "").strip()
-        if not m or not merged or scope.lower() in QUIET_SCOPES:
+        if not m or not merged or scope.lower() in QUIET_SCOPES or CATALOG_TITLE_RE.search(m.group(2)):
             continue
         out.append({"id": f"feature:{it.get('number')}", "kind": "feature", "at": merged, "title": PR_REF_RE.sub("", m.group(2).strip()),
                     "detail": f"{scope} · #{it.get('number')}" if scope else f"#{it.get('number')}", "scope": scope,
@@ -319,6 +333,23 @@ def merged_counts(start: dt.datetime, end: dt.datetime, tz: dt.tzinfo, now: dt.d
     return out
 
 
+def src_x(month: str) -> dict | None:
+    """The day entries of the local On-X file that fall in `month` (its days are in the file's own tz),
+    or None when there is no file. A broken file is reported, never fatal."""
+    path = x_file()
+    if path is None:
+        return None
+    try:
+        feed = json.loads(path.read_text(encoding="utf-8"))
+        days = feed["days"]
+        if not isinstance(days, dict):
+            raise TypeError
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"error": f"couldn't read {path.name}", "days": {}}
+    return {"tz": feed.get("tz") or "America/Los_Angeles", "updated": feed.get("updated"), "big_min": feed.get("bigMin"),
+            "days": {d: v for d, v in days.items() if d.startswith(month) and isinstance(v, dict)}}
+
+
 # ── cache ───────────────────────────────────────────────────────────────────
 def load_cache() -> dict:
     try:
@@ -351,7 +382,7 @@ def collect(month: str | None = None, tz_name: str | None = None, force: bool = 
     key = f"{month}|{tz}"
     hit = cache.get("months", {}).get(key)
     if hit and not force and (end <= now or time.time() - hit.get("generated", 0) < FRESH_S):
-        return {**hit, "cached": True}
+        return {**hit, "cached": True, "x": src_x(month)}  # the local X file is re-read every time
     mode = auth_mode()
     window_end = min(end, now + dt.timedelta(minutes=5))
     drops, errors, merged = [], {}, {}
@@ -383,7 +414,7 @@ def collect(month: str | None = None, tz_name: str | None = None, force: bool = 
     if not errors:  # never cache a partial month
         cache.setdefault("months", {})[key] = result
     save_cache(cache)
-    return result
+    return {**result, "x": src_x(month)}   # attached after caching: the X file stays out of the cache
 
 
 def compact(data: dict) -> dict:
@@ -417,8 +448,19 @@ def summary(period: str = "week", tz_name: str | None = None) -> dict:
         else:
             day.setdefault(d["kind"].replace("-", "_") + "s", []).append(
                 {"title": d["title"], "detail": d.get("detail") or "", "url": d.get("url") or ""})
-    return {"period": period, "time_zone": data["tz"], "today": str(today), "days": out,
-            "source": "public GitHub: NousResearch/hermes-agent and NousResearch/hermes-official-plugins",
+    xdays = ((data.get("x") or {}).get("days") or {})
+    for day, v in xdays.items():
+        if keep is not None and day not in keep:
+            continue
+        big = v.get("big") or []
+        out.setdefault(day, {"merged_prs": data["merged"].get(day)})["on_x"] = {
+            "headline": v.get("head"), "types": v.get("types"), "by": v.get("by"), "url": v.get("url"),
+            "team_posts": [{"author": t.get("author"), "text": t.get("text"), "url": t.get("url")} for t in (v.get("team") or [])][:6],
+            "biggest_posts": [{"author": b.get("author"), "views": b.get("views"), "url": b.get("url")} for b in big[:3]],
+        }
+    return {"period": period, "time_zone": data["tz"], "today": str(today), "days": dict(sorted(out.items())),
+            "x_days_are": ((data.get("x") or {}).get("tz") if xdays else None),
+            "source": "public GitHub: NousResearch/hermes-agent and NousResearch/hermes-official-plugins" + ("; On X: a local curated file" if xdays else ""),
             "errors": data.get("errors") or {}}
 
 

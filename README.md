@@ -13,7 +13,7 @@ Nous merges 50–200 pull requests a day. Most are fixes. The calendar shows the
 | **Catalog** | A plugin new in the plugin catalog | `plugin-catalog/` compared day by day |
 | *N merged PRs* | Every merged PR that day, counted, never listed | `NousResearch/hermes-agent` |
 
-Click a day to see each drop with its link. Days follow your own time zone.
+Release days are drawn in ink, launch days get a blue date, and a thin bar along each day's bottom edge shows how many PRs merged. Click a day to open its sheet, with every drop and its link. Days follow your own time zone.
 
 ## Install
 
@@ -59,11 +59,22 @@ hermes nous-calendar --month 2026-10
 /nous-calendar                        # the same, in any Hermes chat
 ```
 
+## Optional: an "On X" layer from your own file
+
+If you keep a curated record of what Nous and Teknium posted on X, the calendar can show it next to the GitHub drops: the day's headline in the cell, the top post's views in the corner, and "On X", "Biggest posts" and "Team posts" sections in the day sheet.
+
+The plugin never fetches X data and ships none. It reads one local JSON file, only if it exists:
+
+- `NOUS_CALENDAR_X_FILE=/path/to/file.json` in your Hermes `.env`, or
+- `~/.hermes/plugin-data/hermes-nous-calendar/x-drops.json`
+
+Shape: `{"tz": "America/Los_Angeles", "updated": "2026-10-22", "days": {"2026-10-21": {"types": ["release", "launch"], "head": "Item one · item two", "by": "Nous", "time": "1:50 PM", "url": "https://x.com/…", "tags": ["v0.22.4"], "team": [{"author", "time", "url", "text", "repost"}], "big": [{"author", "time", "url", "text", "views"}]}}}`. Types: `release`, `launch`, `model` (free model), `news`, `build`. Without the file, the calendar is GitHub-only and says so.
+
 ## What it reads and stores
 
-- **Reads:** public GitHub data only, through your signed-in `gh` if there is one, else `GITHUB_TOKEN`/`GH_TOKEN`, else anonymously.
+- **Reads:** public GitHub data only, through your signed-in `gh` if there is one, else `GITHUB_TOKEN`/`GH_TOKEN`, else anonymously. Plus your local On-X file if you set one up.
 - **Model calls:** none. The tool only returns data; your own model writes the answer when you ask in chat.
-- **Stores:** one cache file, `~/.hermes/plugin-data/hermes-nous-calendar/cache.json`. Finished months are kept; the current month is re-read at most every 15 minutes, plus the 6-hour background read.
+- **Stores:** one cache file (GitHub data only; the On-X file is re-read, never copied), `~/.hermes/plugin-data/hermes-nous-calendar/cache.json`. Finished months are kept; the current month is re-read at most every 15 minutes, plus the 6-hour background read.
 - **Runs in the background:** one thread in the plugin's backend, which wakes every 30 minutes and reads GitHub at most every 6 hours.
 - **Sends:** nothing anywhere. Notifications are local desktop notifications.
 
@@ -84,4 +95,4 @@ hermes plugins validate .
 
 ## License
 
-MIT © Bikash Joshi. Built on [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research. Not affiliated with Nous Research.
+MIT © Bikash Joshi. Fonts in `desktop/fonts` (Anton, Instrument Sans, JetBrains Mono) are under the SIL Open Font License 1.1; see `desktop/fonts/OFL.txt`. Built on [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research. Not affiliated with Nous Research.
