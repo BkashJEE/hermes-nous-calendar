@@ -255,6 +255,31 @@ class YourVersion(Base):
             self.assertIsNone(n.release_status({}))
 
 
+class WebPosts(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("nc_web_build", ROOT / "web" / "build.py")
+        self.b = importlib.util.module_from_spec(spec)
+        with mock.patch.dict(os.environ, {}):
+            spec.loader.exec_module(self.b)
+
+    def test_only_others_posts_and_no_curation_are_published(self):
+        src = {"tz": LA, "days": {"2026-10-21": {"head": "curated", "types": ["launch"], "by": "Nous",
+            "team": [{"author": "BkashJosi", "url": "https://x.com/BkashJosi/status/1", "text": "mine"},
+                     {"author": "Teknium", "url": "https://x.com/Teknium/status/2", "text": "t", "likes": "14", "notes": "private"}],
+            "big": [{"author": "NousResearch", "url": "https://x.com/NousResearch/status/3", "views": 968865}]}}}
+        out = self.b.public_posts(src)["days"]["2026-10-21"]
+        self.assertEqual(set(out), {"team", "big"})
+        self.assertEqual([p["author"] for p in out["team"]], ["Teknium"])
+        self.assertNotIn("notes", out["team"][0])
+
+    def test_enrich_takes_likes_and_quotes_from_x(self):
+        posts = {"days": {"2026-10-17": {"team": [{"author": "Teknium", "url": "https://x.com/Teknium/status/2111671559937232988", "likes": "14"}]}}}
+        live = json.dumps({"favorite_count": 413, "conversation_count": 14, "quoted_tweet": {"user": {"screen_name": "dee_hw"}}}).encode()
+        with mock.patch("urllib.request.urlopen", return_value=mock.Mock(read=lambda: live)), mock.patch("time.sleep"):
+            p = self.b.enrich(posts)["days"]["2026-10-17"]["team"][0]
+        self.assertEqual((p["likes"], p["replies"], p["quote_of"]), (413, 14, "dee_hw"))
+
+
 class Background(Base):
     def test_reads_github_once_per_window(self):
         with mock.patch.object(n, "collect") as collect:

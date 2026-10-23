@@ -411,7 +411,9 @@ function DaySheet({ m, n, onClose, onStep, canPrev, canNext }) {
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [m.iso, canPrev, canNext])
-  const x = m.xday
+  const x0 = m.xday
+  // a post can be both a team post and one of the day's biggest: list it once, under Biggest posts
+  const x = x0 ? { ...x0, team: (x0.team || []).filter((t) => !(x0.big || []).some((b) => b.url === t.url)) } : x0
   const of = (k) => m.drops.filter((d) => d.kind === k)
   const sec = (k, title, items, body) => (items && items.length ? h('section', { className: 'sh-sec', key: k }, h('h3', null, icon(k), title, h('b', null, String(items.length))), body) : null)
   const row = (d, extra) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, title: urlOf(d), onClick: (e) => openFrom(e, urlOf(d)),
@@ -436,14 +438,14 @@ function DaySheet({ m, n, onClose, onStep, canPrev, canNext }) {
           h('ul', { className: 'bul' }, ...String(x.head || '').split(' · ').map((part, i) => jsx('li', { children: i === 0 && x.url ? jsx(LinkOut, { url: x.url, label: part.replace(/`/g, '') }) : inline(part) }, i)))) : null,
         sec('release', 'Released', of('release'), h('div', { className: 'sh-sec' }, ...of('release').map((d) => row(d)))),
         x && x.big && x.big.length ? sec('news', 'Biggest posts', x.big, h('div', { className: 'sh-sec' }, ...x.big.map((b, i) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, onClick: (e) => openFrom(e, b.url),
-          children: [jsx('b', { children: `@${b.author}` }, 'a'), jsx('em', { children: `${fmtViews(b.views)} views` }, 'v'), b.text ? jsx('p', { children: b.text }, 't') : null,
-            jsx('div', { className: 'acts', children: [b.time ? jsx('small', { children: `${b.time} PT` }, 's') : null, jsx(LinkOut, { url: b.url, label: 'Open on X' }, 'l')] }, 'k')] }, `big${i}`)))) : null,
+          children: [jsx('b', { children: `@${b.author}${b.quote_of ? ` · quoting @${b.quote_of}` : ''}` }, 'a'), jsx('em', { children: `${fmtViews(b.views)} views` }, 'v'), b.text ? jsx('p', { children: b.text }, 't') : null,
+            jsx('div', { className: 'acts', children: [b.time ? jsx('small', { children: [`${b.time} PT`, toNum(b.likes) ? ` · ${fmtViews(b.likes)} likes` : ''].join('') }, 's') : null, jsx(LinkOut, { url: b.url, label: 'Open on X' }, 'l')] }, 'k')] }, `big${i}`)))) : null,
         sec('official', 'Official plugins', of('official'), h('div', { className: 'sh-sec' }, ...of('official').map((d) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, onClick: (e) => openFrom(e, urlOf(d)),
           children: [jsx('b', { children: d.title }, 'b'), jsx('em', { children: 'official' }, 'e'), d.detail ? jsx('small', { children: d.detail }, 's') : null,
             jsx('div', { className: 'acts', children: [jsx('button', { type: 'button', className: 'inst', onClick: (e) => { e.stopPropagation(); copyText(`hermes plugins install ${d.title} --enable`) }, children: `Copy: hermes plugins install ${d.title}` }, 'c'), jsx(LinkOut, { url: urlOf(d), label: 'Catalog entry' }, 'l')] }, 'a')] }, d.id)))),
         sec('feature', 'Features merged on main', of('feature'), h('div', { className: 'sh-sec' }, ...of('feature').map((d) => row(d)))),
         x && x.team && x.team.length ? sec('model', 'Team posts', x.team, h('div', { className: 'sh-sec' }, ...x.team.map((t, i) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, onClick: (e) => openFrom(e, t.url),
-          children: [jsx('b', { children: `@${t.author}${t.repost ? ' · repost' : ''}` }, 'a'), jsx('em', { children: toNum(t.views) ? `${fmtViews(t.views)} views` : toNum(t.likes) ? `${fmtViews(t.likes)} likes` : '' }, 'v'), t.text ? jsx('p', { children: t.text }, 't') : null,
+          children: [jsx('b', { children: `@${t.author}${t.repost ? ' · repost' : t.quote_of ? ` · quoting @${t.quote_of}` : ''}` }, 'a'), jsx('em', { children: toNum(t.views) ? `${fmtViews(t.views)} views` : toNum(t.likes) ? `${fmtViews(t.likes)} likes` : '' }, 'v'), t.text ? jsx('p', { children: t.text }, 't') : null,
             jsx('div', { className: 'acts', children: [t.time ? jsx('small', { children: `${t.time} PT` }, 's') : null, jsx(LinkOut, { url: t.url, label: 'Open on X' }, 'l')] }, 'k')] }, `team${i}`)))) : null,
         sec('plugin-update', 'Official plugin updates', of('plugin-update'), h('div', { className: 'sh-sec' }, ...of('plugin-update').map((d) => row(d)))),
         sec('catalog', 'New in the catalog', cat, h('div', { className: 'chips' },

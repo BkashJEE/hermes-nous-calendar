@@ -31,7 +31,7 @@ OWN = {"bkashjosi"}                     # never publish the maintainer's own pos
 
 def public_posts(src: dict) -> dict:
     """Only posts by others: team posts (Nous / Teknium) and the biggest posts, nothing curated."""
-    keep = ("author", "time", "url", "text", "views", "likes", "repost")
+    keep = ("author", "time", "url", "text", "views", "likes", "replies", "repost", "quote_of")
     days = {}
     for day, v in sorted((src.get("days") or {}).items()):
         if not isinstance(v, dict):
@@ -47,13 +47,49 @@ def public_posts(src: dict) -> dict:
             "days": days}
 
 
+def enrich(posts: dict) -> dict:
+    """Take each post's likes, replies and quoted author live from X's public embed endpoint
+    (cdn.syndication.twimg.com, the one embedded tweets use) instead of trusting hand-captured counts.
+    Views stay as captured: the endpoint has none. A post the endpoint can't read keeps its values."""
+    import re, time, urllib.request
+    seen = {}
+    for day in posts["days"].values():
+        for kind in ("team", "big"):
+            for p in day.get(kind, []):
+                m = re.search(r"/status/(\d+)", p.get("url", ""))
+                if not m:
+                    continue
+                tid = m.group(1)
+                if tid not in seen:
+                    try:
+                        req = urllib.request.Request(f"https://cdn.syndication.twimg.com/tweet-result?id={tid}&lang=en&token=4", headers={"User-Agent": "Mozilla/5.0"})
+                        seen[tid] = json.loads(urllib.request.urlopen(req, timeout=20).read())
+                    except Exception:
+                        seen[tid] = None
+                    time.sleep(0.3)
+                r = seen[tid]
+                if not r:
+                    continue
+                if isinstance(r.get("favorite_count"), int):
+                    p["likes"] = r["favorite_count"]
+                if isinstance(r.get("conversation_count"), int):
+                    p["replies"] = r["conversation_count"]
+                q = (r.get("quoted_tweet") or {}).get("user", {}).get("screen_name")
+                if q:
+                    p["quote_of"] = q
+                else:
+                    p.pop("quote_of", None)
+    posts["checked"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return posts
+
+
 def load_posts(path: str | None) -> dict | None:
     if path or PRIVATE.exists():
-        return public_posts(json.loads(Path(path or PRIVATE).read_text()))
+        return enrich(public_posts(json.loads(Path(path or PRIVATE).read_text())))
     try:
         import urllib.request
         with urllib.request.urlopen(LIVE, timeout=20) as r:
-            return public_posts(json.loads(r.read().decode()))
+            return enrich(public_posts(json.loads(r.read().decode())))
     except Exception as e:
         print(f"no posts feed ({e}); building GitHub-only")
         return None

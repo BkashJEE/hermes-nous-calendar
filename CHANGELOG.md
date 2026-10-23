@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Post likes, replies and "quoting @…" come live from X when the posts feed is built (16 hand-captured like counts were reply counts).
+- A post that is both a team post and one of the day's biggest is listed once.
+
 ## 0.2.1
 
 - Day cards show the top post's views **and** the merged-PR count ("176K views · 207 PRs").

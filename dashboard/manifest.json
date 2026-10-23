@@ -2,7 +2,7 @@
   "name": "hermes-nous-calendar",
   "label": "Nous Calendar",
   "description": "Backend for the Nous Calendar page in Hermes Desktop: what Nous shipped for Hermes Agent, by month.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "api": "plugin_api.py",
   "tab": { "hidden": true }
 }

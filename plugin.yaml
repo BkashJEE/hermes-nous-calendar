@@ -1,5 +1,5 @@
 name: hermes-nous-calendar
-version: "0.2.1"
+version: "0.2.2"
 manifest_version: 2
 api_version: 1
 description: "Never miss a Nous drop. A month calendar of what Nous Research shipped for Hermes Agent, day by day: releases, new official plugins, new catalog plugins, feature PRs and official-plugin updates, with the day's merged-PR count. Desktop page /nous-calendar with a new-drops chip and a notification for releases and new official plugins, /nous-calendar in chat, and `hermes nous-calendar`. Reads public GitHub data and a public feed of the biggest Hermes posts on X; no model calls."

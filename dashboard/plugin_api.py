@@ -21,7 +21,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 router = APIRouter()
 log = logging.getLogger("hermes_nous_calendar")
 
