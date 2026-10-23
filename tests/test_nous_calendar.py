@@ -227,6 +227,19 @@ class Background(Base):
         with mock.patch.object(n, "collect"):
             self.assertTrue(n.background_refresh())
 
+    def test_a_read_killed_half_way_retries_after_the_claim_not_six_hours(self):
+        with mock.patch.object(n, "collect", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                n.background_refresh()
+        self.assertNotIn("bg_at", n.load_cache())
+        with mock.patch.object(n, "collect"):
+            self.assertFalse(n.background_refresh())   # another process may still be reading
+        cache = n.load_cache()
+        cache["bg_claim"] = time.time() - n.BG_CLAIM_S - 1
+        n.save_cache(cache)
+        with mock.patch.object(n, "collect"):
+            self.assertTrue(n.background_refresh())
+
 
 class Text(unittest.TestCase):
     def test_first_line_keeps_snake_case_and_drops_markdown(self):

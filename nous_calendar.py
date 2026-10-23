@@ -465,21 +465,29 @@ def summary(period: str = "week", tz_name: str | None = None) -> dict:
 
 
 BG_EVERY_S = 6 * 3600
+BG_CLAIM_S = 15 * 60       # a read that started this recently is still running somewhere
 
 
 def background_refresh() -> bool:
-    """Re-read the current month if nobody did in the last 6 hours (any process, any profile that
-    shares this cache). Returns True when it read GitHub. Called by the backend's daily refresher."""
+    """Re-read the current month if no read FINISHED in the last 6 hours (any process, any profile that
+    shares this cache). A short claim stops parallel processes reading GitHub at once; a read killed
+    half-way (Desktop quit, crash) only blocks the next one for 15 minutes, not 6 hours.
+    Returns True when it read GitHub. Called by the backend's daily refresher."""
     cache = load_cache()
-    if time.time() - cache.get("bg_at", 0) < BG_EVERY_S:
+    now = time.time()
+    if now - cache.get("bg_at", 0) < BG_EVERY_S or now - cache.get("bg_claim", 0) < BG_CLAIM_S:
         return False
-    cache["bg_at"] = time.time()
-    save_cache(cache)          # claim the slot first so parallel gateways don't all read GitHub
+    cache["bg_claim"] = now
+    save_cache(cache)
     tz_name = cache.get("page_tz")
     collect(None, tz_name, force=True)
     today = dt.datetime.now(zone(tz_name)).date()
     if today.day <= 2:         # the first days of a month also settle last month
         collect((today.replace(day=1) - dt.timedelta(days=1)).strftime("%Y-%m"), tz_name, force=True)
+    done = load_cache()        # collect() rewrote the cache; stamp the finished read on the fresh copy
+    done["bg_at"] = time.time()
+    done.pop("bg_claim", None)
+    save_cache(done)
     return True
 
 
