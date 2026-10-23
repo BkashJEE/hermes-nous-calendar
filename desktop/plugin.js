@@ -9,6 +9,7 @@
 // Look: the Hermes Daily Drops sheet: paper, ink, Hermes blue, Anton dates, hairline grid.
 //       Fonts ship in ./fonts (OFL); system fallbacks keep it readable if they can't load.
 
+import * as SDK from '@hermes/plugin-sdk'
 import { host, PALETTE_AREA, ROUTES_AREA, SIDEBAR_NAV_AREA, STATUSBAR_AREAS } from '@hermes/plugin-sdk'
 import { useEffect, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
@@ -147,6 +148,24 @@ function announce(d) {
 const openedAt = () => lsGet(OPENED_KEY, 0)
 function markOpened() { lsSet(OPENED_KEY, Date.now()); emit() }
 
+// In-app browser: the SDK's MessageTextContent renders links exactly like chat does, and a chat link
+// opens web pages in Hermes Desktop's own browser pane (Ctrl/⌘-click still goes to the system browser).
+// Every link here is rendered through it; clicking a row clicks that link. Older hosts fall back to
+// the system browser.
+const InAppText = SDK.MessageTextContent
+function LinkOut({ url, label }) {
+  if (!url) return null
+  if (!InAppText) return jsx('a', { className: 'out', href: url, onClick: (e) => { e.preventDefault(); e.stopPropagation(); openLink(url) }, children: label })
+  return jsx('span', { className: 'out', 'data-nc-link': '1', onClick: (e) => e.stopPropagation(),
+    children: jsx(InAppText, { text: `[${label.replace(/[\[\]]/g, '')}](${url})`, media: false }) })
+}
+// Click the in-app link inside a row (falls back to the system browser when there is none).
+function openFrom(e, url) {
+  const a = e && e.currentTarget && e.currentTarget.querySelector('[data-nc-link] a[href]')
+  if (a) { a.click(); return }
+  openLink(url)
+}
+
 function openLink(url) {
   if (!url) return
   if (os && typeof os.openExternal === 'function') {
@@ -158,6 +177,10 @@ function openLink(url) {
 // The CLI fallback sends catalog additions without links (--compact keeps it under the output cap).
 const catalogUrl = (name) => `https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/${name}.yaml`
 const urlOf = (x) => x.url || (x.kind === 'catalog' || x.kind === 'official' ? catalogUrl(x.title) : '')
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); host.notify?.({ kind: 'success', message: `Copied: ${text}` }); return true } catch { return false }
+}
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 const toNum = (v) => {
@@ -232,6 +255,23 @@ const CSS = `
 .nc .prog .pct{font:400 30px var(--display);color:var(--blue)}
 .nc .s-release{background:var(--ink)!important}.nc .s-launch{background:var(--blue)!important}.nc .s-model{background:var(--teal)!important}.nc .s-news{background:var(--gold)!important}.nc .s-build{background:var(--grey)!important}
 .nc .warn{font:500 12.5px var(--mono);color:var(--orange)}
+.nc .behind{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--ink);color:#fff;border-radius:14px;padding:14px 18px;position:relative;overflow:hidden}
+.nc .behind::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--blue)}
+.nc .behind .big{font:400 28px/1 var(--display);letter-spacing:.01em}
+.nc .behind .big b{color:#8fb0ff;font-weight:400}
+.nc .behind .what{flex:1;min-width:220px;font:500 13.5px/1.4 var(--body);color:#c9d2e6}
+.nc .behind .what a{color:#fff;text-decoration:none;border-bottom:1px solid #ffffff55;cursor:pointer}
+.nc .cmd{font:700 12.5px var(--mono);background:#fff;color:var(--ink);border:0;border-radius:8px;padding:8px 12px;cursor:pointer;white-space:nowrap}
+.nc .cmd:hover{background:#dfe7ff}
+.nc .uptodate{font:600 12px var(--mono);color:var(--teal)}
+.nc .inst{font:700 10.5px var(--mono);border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:6px;padding:3px 7px;cursor:pointer;white-space:nowrap}
+.nc .inst:hover{border-color:var(--blue);color:var(--blue)}
+.nc .row .acts{grid-column:1/-1;display:flex;gap:10px;margin-top:4px;align-items:center;flex-wrap:wrap}
+.nc .out{font:600 12px var(--mono);color:var(--blue)}
+.nc .out *{margin:0!important;padding:0!important;font:inherit!important;line-height:1.3!important;display:inline!important;color:inherit}
+.nc .out a{color:var(--blue)!important;text-decoration:none;border-bottom:1px solid currentColor}
+.nc .bul .out{font:600 15px var(--body)}
+.nc .behind .out,.nc .behind .out a{color:#fff!important}
 .nc .err{font:500 13px var(--body);color:#b42318}
 .nc .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
 .nc .cell{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px 9px;display:flex;flex-direction:column;gap:6px;overflow:hidden;min-height:192px;min-width:0;text-align:left;cursor:pointer;transition:box-shadow .15s,transform .15s}
@@ -370,8 +410,9 @@ function DaySheet({ m, n, onClose, onStep, canPrev, canNext }) {
   const x = m.xday
   const of = (k) => m.drops.filter((d) => d.kind === k)
   const sec = (k, title, items, body) => (items && items.length ? h('section', { className: 'sh-sec', key: k }, h('h3', null, icon(k), title, h('b', null, String(items.length))), body) : null)
-  const row = (d, extra) => jsx('button', { type: 'button', className: 'row', title: urlOf(d), onClick: () => openLink(urlOf(d)),
-    children: [jsx('b', { children: inline(d.title) }, 'b'), jsx('em', { children: extra || fmtTime(d.at) }, 'e'), d.detail ? jsx('small', { children: d.detail }, 's') : null] }, d.id)
+  const row = (d, extra) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, title: urlOf(d), onClick: (e) => openFrom(e, urlOf(d)),
+    children: [jsx('b', { children: inline(d.title) }, 'b'), jsx('em', { children: extra || fmtTime(d.at) }, 'e'), d.detail ? jsx('small', { children: d.detail }, 's') : null,
+      jsx('div', { className: 'acts', children: jsx(LinkOut, { url: urlOf(d), label: d.repo && d.repo.includes('github') || /github\.com/.test(urlOf(d)) ? 'Open on GitHub' : 'Open' }) }, 'l')] }, d.id)
   const cat = of('catalog')
   return h('div', null,
     jsx('div', { className: 'scrim', onClick: onClose }),
@@ -388,17 +429,23 @@ function DaySheet({ m, n, onClose, onStep, canPrev, canNext }) {
       h('div', { className: 'sh-body' },
         x ? h('section', { className: 'sh-sec' },
           h('h3', null, icon('launch'), 'On X', h('span', null, `${x.by || 'Nous'}${x.time ? ` · ${x.time} PT` : ''}`)),
-          h('ul', { className: 'bul' }, ...String(x.head || '').split(' · ').map((part, i) => jsx('li', { children: i === 0 && x.url ? jsx('a', { href: x.url, onClick: (e) => { e.preventDefault(); openLink(x.url) }, children: inline(part) }) : inline(part) }, i)))) : null,
+          h('ul', { className: 'bul' }, ...String(x.head || '').split(' · ').map((part, i) => jsx('li', { children: i === 0 && x.url ? jsx(LinkOut, { url: x.url, label: part.replace(/`/g, '') }) : inline(part) }, i)))) : null,
         sec('release', 'Released', of('release'), h('div', { className: 'sh-sec' }, ...of('release').map((d) => row(d)))),
-        x && x.big && x.big.length ? sec('news', 'Biggest posts', x.big, h('div', { className: 'sh-sec' }, ...x.big.map((b, i) => jsx('button', { type: 'button', className: 'row', onClick: () => openLink(b.url),
-          children: [jsx('b', { children: `@${b.author}` }, 'a'), jsx('em', { children: `${fmtViews(b.views)} views` }, 'v'), b.text ? jsx('p', { children: b.text }, 't') : null, b.time ? jsx('small', { children: `${b.time} PT` }, 's') : null] }, `big${i}`)))) : null,
-        sec('official', 'Official plugins', of('official'), h('div', { className: 'sh-sec' }, ...of('official').map((d) => row(d, 'catalog')))),
+        x && x.big && x.big.length ? sec('news', 'Biggest posts', x.big, h('div', { className: 'sh-sec' }, ...x.big.map((b, i) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, onClick: (e) => openFrom(e, b.url),
+          children: [jsx('b', { children: `@${b.author}` }, 'a'), jsx('em', { children: `${fmtViews(b.views)} views` }, 'v'), b.text ? jsx('p', { children: b.text }, 't') : null,
+            jsx('div', { className: 'acts', children: [b.time ? jsx('small', { children: `${b.time} PT` }, 's') : null, jsx(LinkOut, { url: b.url, label: 'Open on X' }, 'l')] }, 'k')] }, `big${i}`)))) : null,
+        sec('official', 'Official plugins', of('official'), h('div', { className: 'sh-sec' }, ...of('official').map((d) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, onClick: (e) => openFrom(e, urlOf(d)),
+          children: [jsx('b', { children: d.title }, 'b'), jsx('em', { children: 'official' }, 'e'), d.detail ? jsx('small', { children: d.detail }, 's') : null,
+            jsx('div', { className: 'acts', children: [jsx('button', { type: 'button', className: 'inst', onClick: (e) => { e.stopPropagation(); copyText(`hermes plugins install ${d.title} --enable`) }, children: `Copy: hermes plugins install ${d.title}` }, 'c'), jsx(LinkOut, { url: urlOf(d), label: 'Catalog entry' }, 'l')] }, 'a')] }, d.id)))),
         sec('feature', 'Features merged on main', of('feature'), h('div', { className: 'sh-sec' }, ...of('feature').map((d) => row(d)))),
-        x && x.team && x.team.length ? sec('model', 'Team posts', x.team, h('div', { className: 'sh-sec' }, ...x.team.map((t, i) => jsx('button', { type: 'button', className: 'row', onClick: () => openLink(t.url),
-          children: [jsx('b', { children: `@${t.author}${t.repost ? ' · repost' : ''}` }, 'a'), jsx('em', { children: t.time ? `${t.time} PT` : '' }, 'v'), t.text ? jsx('p', { children: t.text }, 't') : null] }, `team${i}`)))) : null,
+        x && x.team && x.team.length ? sec('model', 'Team posts', x.team, h('div', { className: 'sh-sec' }, ...x.team.map((t, i) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, onClick: (e) => openFrom(e, t.url),
+          children: [jsx('b', { children: `@${t.author}${t.repost ? ' · repost' : ''}` }, 'a'), jsx('em', { children: t.time ? `${t.time} PT` : '' }, 'v'), t.text ? jsx('p', { children: t.text }, 't') : null,
+            jsx('div', { className: 'acts', children: jsx(LinkOut, { url: t.url, label: 'Open on X' }) }, 'k')] }, `team${i}`)))) : null,
         sec('plugin-update', 'Official plugin updates', of('plugin-update'), h('div', { className: 'sh-sec' }, ...of('plugin-update').map((d) => row(d)))),
         sec('catalog', 'New in the catalog', cat, h('div', { className: 'chips' },
-          ...(all ? cat : cat.slice(0, CATALOG_FOLD)).map((d) => jsx('button', { type: 'button', className: 'chip', title: d.detail || d.title, onClick: () => openLink(urlOf(d)), children: d.title }, d.id)),
+          ...(all ? cat : cat.slice(0, CATALOG_FOLD)).map((d) => jsx('span', { className: 'chip', role: 'button', tabIndex: 0, title: `${d.detail || d.title}\nClick: open the catalog entry · Shift-click: copy the install command`,
+            onClick: (e) => (e.shiftKey ? copyText(`hermes plugins install ${d.title} --enable`) : openFrom(e, urlOf(d))),
+            children: [d.title, jsx('span', { hidden: true, children: jsx(LinkOut, { url: urlOf(d), label: d.title }) }, 'l')] }, d.id)),
           cat.length > CATALOG_FOLD && !all ? jsx('button', { type: 'button', className: 'chip', onClick: () => setAll(true), children: `Show all ${cat.length}` }, 'more') : null)),
         h('section', { className: 'sh-sec' }, h('h3', null, 'Merged PRs', h('b', null, fmtInt(m.merged))),
           h('div', { className: 'muted' }, 'Every pull request merged into NousResearch/hermes-agent that day, counted, not listed.')))))
@@ -469,6 +516,12 @@ function CalendarPage() {
       d && Object.keys(d.errors || {}).length ? h('div', { className: 'warn' }, `Couldn't read: ${Object.entries(d.errors).map(([k, v]) => `${k} (${v})`).join(' · ')}`) : null,
       d && d.auth === 'anonymous' ? h('div', { className: 'warn' }, 'Not signed in to GitHub: catalog additions come from commit messages and merged-PR counts are off. Run `gh auth login` for exact data.') : null,
       d && d.x && d.x.error ? h('div', { className: 'warn' }, `On X file unreadable (${d.x.error}). GitHub drops still show.`) : null,
+      d && d.you && d.you.behind && d.you.behind.length ? h('div', { className: 'behind' },
+        h('div', { className: 'big' }, `You're on ${d.you.installed} · `, jsx('b', { children: `${d.you.behind.length} release${d.you.behind.length === 1 ? '' : 's'} behind` })),
+        h('div', { className: 'what' }, 'New since your version: ', ...d.you.behind.slice(0, 4).flatMap((r, i) => [i ? ', ' : '', jsx(LinkOut, { url: r.url, label: r.version }, r.version)]),
+          d.you.behind.length > 4 ? ` and ${d.you.behind.length - 4} more` : '', '. Read the notes, then update.'),
+        h('button', { type: 'button', className: 'cmd', onClick: () => copyText('hermes update') }, 'Copy: hermes update')) : null,
+      d && d.you && d.you.behind && !d.you.behind.length ? h('div', { className: 'uptodate' }, `✓ You're on the latest Hermes release, ${d.you.installed}.`) : null,
       d ? h('main', { className: 'grid' }, ...isos.map((iso, i) => jsx(DayCell, { m: models[iso], n: i + 1, today, future: iso > today, selected: pick === iso, onPick: setPick }, iso))) : null,
       d ? h('footer', null,
         h('div', { className: 'legend' }, ...[['release', 'Release', 'var(--ink)'], ['launch', 'Launch', 'var(--blue)'], ['model', 'Free model', 'var(--teal)'], ['news', 'News', 'var(--gold)'], ['build', 'Build (GitHub)', 'var(--grey)']]

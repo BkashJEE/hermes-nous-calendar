@@ -350,7 +350,66 @@ def src_x(month: str) -> dict | None:
             "days": {d: v for d, v in days.items() if d.startswith(month) and isinstance(v, dict)}}
 
 
+def _semver(text: str) -> tuple[int, ...] | None:
+    """The product version in a tag or release name. Some tags are dates (v2026.9.24) with the real
+    version in the name ("Hermes Agent v0.21.5 (v2026.9.24)"), so year-like majors are skipped."""
+    for m in re.finditer(r"v?(\d+)\.(\d+)\.(\d+)", text or ""):
+        v = tuple(int(x) for x in m.groups())
+        if v[0] < 1000:
+            return v
+    return None
+
+
+def installed_version() -> str | None:
+    """The Hermes Agent version on this machine: imported when running inside Hermes, else `hermes --version`."""
+    try:
+        import hermes_cli  # type: ignore
+        v = getattr(hermes_cli, "__version__", None)
+        if v:
+            return str(v)
+    except Exception:
+        pass
+    exe = shutil.which("hermes")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r"v(\d+\.\d+\.\d+)", out or "")
+    return m.group(1) if m else None
+
+
+def release_status(cache: dict) -> dict | None:
+    """How far this machine's Hermes is behind the newest stable release. Releases are kept 15 minutes."""
+    mine = installed_version()
+    if not mine or not _semver(mine):
+        return None
+    hit = cache.get("releases_all")
+    if not hit or time.time() - hit.get("at", 0) > FRESH_S:
+        rows = api(f"repos/{CORE}/releases", {"per_page": 30})
+        hit = cache["releases_all"] = {"at": time.time(), "rows": [
+            {"tag": r.get("tag_name"), "name": (r.get("name") or r.get("tag_name") or "").strip(), "url": r.get("html_url"),
+             "at": r.get("published_at"), "line": first_line(r.get("body") or "")}
+            for r in rows if not r.get("draft") and not r.get("prerelease")]}
+    ver = lambda r: _semver(f"{r['tag']} {r['name']}")  # noqa: E731
+    rows = sorted((r for r in hit["rows"] if ver(r)), key=ver, reverse=True)
+    for r in rows:
+        r["version"] = "v" + ".".join(map(str, ver(r)))
+    newer = [r for r in rows if ver(r) > _semver(mine)]
+    return {"installed": f"v{mine.lstrip('v')}", "latest": rows[0]["version"] if rows else None, "behind": newer}
+
+
 # ── cache ───────────────────────────────────────────────────────────────────
+def _you(cache: dict) -> dict | None:
+    try:
+        status = release_status(cache)
+        save_cache(cache)
+        return status
+    except (GitHubError, KeyError, TypeError, ValueError):
+        return None
+
+
 def load_cache() -> dict:
     try:
         return json.loads(CACHE.read_text())
@@ -382,7 +441,7 @@ def collect(month: str | None = None, tz_name: str | None = None, force: bool = 
     key = f"{month}|{tz}"
     hit = cache.get("months", {}).get(key)
     if hit and not force and (end <= now or time.time() - hit.get("generated", 0) < FRESH_S):
-        return {**hit, "cached": True, "x": src_x(month)}  # the local X file is re-read every time
+        return {**hit, "cached": True, "x": src_x(month), "you": _you(cache)}  # re-read every time
     mode = auth_mode()
     window_end = min(end, now + dt.timedelta(minutes=5))
     drops, errors, merged = [], {}, {}
@@ -414,7 +473,7 @@ def collect(month: str | None = None, tz_name: str | None = None, force: bool = 
     if not errors:  # never cache a partial month
         cache.setdefault("months", {})[key] = result
     save_cache(cache)
-    return {**result, "x": src_x(month)}   # attached after caching: the X file stays out of the cache
+    return {**result, "x": src_x(month), "you": _you(cache)}   # attached after caching: the X file stays out of the cache
 
 
 def compact(data: dict) -> dict:
@@ -458,7 +517,10 @@ def summary(period: str = "week", tz_name: str | None = None) -> dict:
             "team_posts": [{"author": t.get("author"), "text": t.get("text"), "url": t.get("url")} for t in (v.get("team") or [])][:6],
             "biggest_posts": [{"author": b.get("author"), "views": b.get("views"), "url": b.get("url")} for b in big[:3]],
         }
+    you = data.get("you") or {}
     return {"period": period, "time_zone": data["tz"], "today": str(today), "days": dict(sorted(out.items())),
+            "your_hermes": {"installed": you.get("installed"), "latest_release": you.get("latest"),
+                            "releases_behind": [r["version"] for r in you.get("behind") or []]} if you else None,
             "x_days_are": ((data.get("x") or {}).get("tz") if xdays else None),
             "source": "public GitHub: NousResearch/hermes-agent and NousResearch/hermes-official-plugins" + ("; On X: a local curated file" if xdays else ""),
             "errors": data.get("errors") or {}}

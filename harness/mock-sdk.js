@@ -28,3 +28,11 @@ export const host = {
     return { code: 0, output: 'a log line\n' + JSON.stringify(slim) }
   },
 }
+
+// Stand-in for the SDK's chat renderer: a markdown link whose click would open Desktop's in-app browser.
+import { jsx as _jsx } from 'react/jsx-runtime'
+export function MessageTextContent({ text }) {
+  const m = /^\[(.*)\]\((.*)\)$/.exec(text || '')
+  if (!m) return _jsx('span', { children: text })
+  return _jsx('a', { href: m[2], onClick: (e) => { e.preventDefault(); window.__inapp = (window.__inapp || []).concat([m[2]]) }, children: m[1] })
+}

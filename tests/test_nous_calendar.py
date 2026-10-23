@@ -215,6 +215,28 @@ class OnX(Base):
         self.assertNotIn("secret curated line", n.CACHE.read_text())
 
 
+class YourVersion(Base):
+    def test_date_tagged_releases_use_the_version_in_their_name(self):
+        self.assertEqual(n._semver("v2026.9.24 Hermes Agent v0.21.5 (v2026.9.24)"), (0, 21, 5))
+        self.assertEqual(n._semver("v0.22.4"), (0, 22, 4))
+        self.assertIsNone(n._semver("nightly"))
+
+    def test_counts_only_newer_stable_releases(self):
+        def rel(tag, name, pre=False):
+            return {"tag_name": tag, "name": name, "html_url": f"u/{tag}", "published_at": "2026-10-01T00:00:00Z", "body": "", "prerelease": pre}
+        rows = [rel("v0.22.5", "Hermes Agent v0.22.5"), rel("v0.22.4", "Hermes Agent v0.22.4"), rel("v0.23.0-rc1", "rc", pre=True),
+                rel("v0.22.2", "Hermes Agent v0.22.2"), rel("v2026.9.24", "Hermes Agent v0.21.5 (v2026.9.24)")]
+        with mock.patch.object(n, "installed_version", return_value="0.22.2"), mock.patch.object(n, "api", return_value=rows):
+            st = n.release_status({})
+        self.assertEqual(st["installed"], "v0.22.2")
+        self.assertEqual(st["latest"], "v0.22.5")
+        self.assertEqual([r["version"] for r in st["behind"]], ["v0.22.5", "v0.22.4"])
+
+    def test_unknown_version_means_no_banner(self):
+        with mock.patch.object(n, "installed_version", return_value=None):
+            self.assertIsNone(n.release_status({}))
+
+
 class Background(Base):
     def test_reads_github_once_per_window(self):
         with mock.patch.object(n, "collect") as collect:
