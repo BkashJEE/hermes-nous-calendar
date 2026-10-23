@@ -29,7 +29,7 @@ def main() -> int:
     dist = WEB / "dist"
     shutil.rmtree(dist, ignore_errors=True)
     (dist / "data").mkdir(parents=True)
-    for f in ("index.html", "sdk-shim.js"):
+    for f in ("index.html", "sdk-shim.js", "vercel.json"):
         shutil.copy(WEB / f, dist / f)
     shutil.copy(ROOT / "desktop" / "plugin.js", dist / "plugin.js")
     today = dt.datetime.now(n.zone(args.tz)).date().replace(day=1)

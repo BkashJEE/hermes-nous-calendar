@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 harness/live.json
 harness/demo.json
+harness/demo-public.json

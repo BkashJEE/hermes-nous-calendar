@@ -1,6 +1,5 @@
 {
-  "outputDirectory": "dist",
-  "buildCommand": null,
+  "cleanUrls": true,
   "headers": [
     { "source": "/data/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=900, stale-while-revalidate=3600" }] },
     { "source": "/(.*)", "headers": [{ "key": "X-Content-Type-Options", "value": "nosniff" }, { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }] }

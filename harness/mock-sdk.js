@@ -3,7 +3,7 @@
 // ?via=cli makes ctx.rest fail like a profile where the backend isn't mounted, so the CLI path runs.
 // ?today=2026-10-22 pins "today" for screenshots.
 const params = new URLSearchParams(location.search)
-const demo = await fetch('./demo.json', { cache: 'no-store' }).then((r) => r.json())
+const demo = await fetch(params.get('demo') === 'public' ? './demo-public.json' : './demo.json', { cache: 'no-store' }).then((r) => r.json())
 if (params.get('today')) demo.today = params.get('today')
 const empty = (month) => ({ ...demo, month, drops: [], merged: {}, counts: Object.fromEntries(Object.keys(demo.counts).map((k) => [k, 0])) })
 const answer = (month) => (month === demo.month ? demo : empty(month))

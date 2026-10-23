@@ -89,6 +89,9 @@ Shape: `{"tz": "America/Los_Angeles", "updated": "2026-10-22", "days": {"2026-10
 
 ## On the web (phones too)
 
+Live: **https://nous-calendar.vercel.app**
+
+
 `web/` builds the same page as a static site from public GitHub data only (no X layer, no version check):
 
 ```bash

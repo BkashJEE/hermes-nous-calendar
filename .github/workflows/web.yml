@@ -27,5 +27,4 @@ jobs:
       - name: Deploy to Vercel
         if: ${{ env.VERCEL_TOKEN != '' }}
         run: |
-          cp web/vercel.json web/dist/vercel.json
           npx --yes vercel@latest deploy web/dist --prod --yes --token "$VERCEL_TOKEN"
