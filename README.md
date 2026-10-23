@@ -95,4 +95,4 @@ hermes plugins validate .
 
 ## License
 
-MIT © Bikash Joshi. Fonts in `desktop/fonts` (Anton, Instrument Sans, JetBrains Mono) are under the SIL Open Font License 1.1; see `desktop/fonts/OFL.txt`. Built on [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research. Not affiliated with Nous Research.
+MIT © Bikash Joshi. Fonts (Anton, Instrument Sans, JetBrains Mono; embedded in `desktop/plugin.js`, sources in `desktop/fonts`) are under the SIL Open Font License 1.1; see `desktop/fonts/OFL.txt`. Built on [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research. Not affiliated with Nous Research.
