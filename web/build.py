@@ -107,6 +107,7 @@ def main() -> int:
     for f in ("index.html", "sdk-shim.js", "vercel.json"):
         shutil.copy(WEB / f, dist / f)
     shutil.copy(ROOT / "desktop" / "plugin.js", dist / "plugin.js")
+    shutil.copy(ROOT / "docs" / "social-preview.png", dist / "og.png")
     today = dt.datetime.now(n.zone(args.tz)).date().replace(day=1)
     months = []
     for i in range(args.months):

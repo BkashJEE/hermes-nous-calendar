@@ -2,6 +2,14 @@
 
 **Never miss a Nous drop.** A month calendar of what Nous Research shipped for Hermes Agent, day by day, inside Hermes Desktop.
 
+![Nous Calendar in Hermes Desktop: October 2026, every day a card](docs/calendar.png)
+
+| Tap a day: what shipped, and the day's biggest posts | On your phone |
+|---|---|
+| ![Day 21: two releases, Nous's 969K-view Jensen post](docs/day-sheet.png) | <img src="docs/phone.png" alt="Nous Calendar on a phone" width="260"> |
+
+*Real screenshots of the plugin with October 2026 data. Live on the web: **https://nous-calendar.vercel.app***
+
 Nous merges 50–200 pull requests a day. Most are fixes. The calendar shows the drops a Hermes user cares about and folds the rest into a count:
 
 | Badge | What it is | Where it comes from |
