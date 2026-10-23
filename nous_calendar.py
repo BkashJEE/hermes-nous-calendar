@@ -41,7 +41,7 @@ import urllib.request
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 CORE = "NousResearch/hermes-agent"
 OFFICIAL = "NousResearch/hermes-official-plugins"
 CATALOG_DIR = "plugin-catalog"

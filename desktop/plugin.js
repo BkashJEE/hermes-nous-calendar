@@ -192,7 +192,7 @@ const toNum = (v) => {
   const n = parseFloat(m[1].replace(/,/g, ''))
   return Math.round(n * (m[2].toLowerCase() === 'm' ? 1e6 : m[2].toLowerCase() === 'k' ? 1e3 : 1))
 }
-const fmtViews = (v) => { const n = toNum(v); return n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : n ? String(n) : '' }
+const fmtViews = (v) => { const n = toNum(v); return n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e4 ? `${Math.round(n / 1e3)}K` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}K` : n ? String(n) : '' }
 const fmtInt = (n) => (n || 0).toLocaleString()
 const dateOf = (iso) => new Date(`${iso}T12:00:00`)
 const fmtDay = (iso, opts) => dateOf(iso).toLocaleDateString(undefined, opts)
@@ -399,7 +399,7 @@ function DayCell({ m, n, today, future, selected, onPick }) {
   future ? h('div', { className: 'head dim' }, 'Watching Nous + Teknium…')
     : h('div', { className: `head${m.head ? '' : ' dim'}` }, m.head ? inline(m.head) : 'No drops this day'),
   future ? null : h('div', { className: 'foot' }, h('span', null, by),
-    m.topViews ? h('span', { className: 'pr' }, `${fmtViews(m.topViews)} views`) : m.merged ? h('span', { className: 'pr' }, `${fmtInt(m.merged)} PRs`) : null))
+    m.topViews || m.merged ? h('span', { className: 'pr' }, [m.topViews ? `${fmtViews(m.topViews)} views` : '', m.merged ? `${fmtInt(m.merged)} PRs` : ''].filter(Boolean).join(' · ')) : null))
 }
 
 const CATALOG_FOLD = 30
@@ -432,7 +432,7 @@ function DaySheet({ m, n, onClose, onStep, canPrev, canNext }) {
             h('div', { className: 'muted' }, fmtDay(m.iso, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))))),
       h('div', { className: 'sh-body' },
         x && x.head ? h('section', { className: 'sh-sec' },
-          h('h3', null, icon('launch'), 'On X', h('span', null, `${x.by || 'Nous'}${x.time ? ` · ${x.time} PT` : ''}`)),
+          h('h3', null, icon('launch'), /github/i.test(x.by || '') ? 'Headline' : 'On X', h('span', null, `${x.by || 'Nous'}${x.time ? ` · ${x.time} PT` : ''}`)),
           h('ul', { className: 'bul' }, ...String(x.head || '').split(' · ').map((part, i) => jsx('li', { children: i === 0 && x.url ? jsx(LinkOut, { url: x.url, label: part.replace(/`/g, '') }) : inline(part) }, i)))) : null,
         sec('release', 'Released', of('release'), h('div', { className: 'sh-sec' }, ...of('release').map((d) => row(d)))),
         x && x.big && x.big.length ? sec('news', 'Biggest posts', x.big, h('div', { className: 'sh-sec' }, ...x.big.map((b, i) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, onClick: (e) => openFrom(e, b.url),
@@ -443,8 +443,8 @@ function DaySheet({ m, n, onClose, onStep, canPrev, canNext }) {
             jsx('div', { className: 'acts', children: [jsx('button', { type: 'button', className: 'inst', onClick: (e) => { e.stopPropagation(); copyText(`hermes plugins install ${d.title} --enable`) }, children: `Copy: hermes plugins install ${d.title}` }, 'c'), jsx(LinkOut, { url: urlOf(d), label: 'Catalog entry' }, 'l')] }, 'a')] }, d.id)))),
         sec('feature', 'Features merged on main', of('feature'), h('div', { className: 'sh-sec' }, ...of('feature').map((d) => row(d)))),
         x && x.team && x.team.length ? sec('model', 'Team posts', x.team, h('div', { className: 'sh-sec' }, ...x.team.map((t, i) => jsx('div', { className: 'row', role: 'link', tabIndex: 0, onClick: (e) => openFrom(e, t.url),
-          children: [jsx('b', { children: `@${t.author}${t.repost ? ' · repost' : ''}` }, 'a'), jsx('em', { children: t.time ? `${t.time} PT` : '' }, 'v'), t.text ? jsx('p', { children: t.text }, 't') : null,
-            jsx('div', { className: 'acts', children: jsx(LinkOut, { url: t.url, label: 'Open on X' }) }, 'k')] }, `team${i}`)))) : null,
+          children: [jsx('b', { children: `@${t.author}${t.repost ? ' · repost' : ''}` }, 'a'), jsx('em', { children: toNum(t.views) ? `${fmtViews(t.views)} views` : toNum(t.likes) ? `${fmtViews(t.likes)} likes` : '' }, 'v'), t.text ? jsx('p', { children: t.text }, 't') : null,
+            jsx('div', { className: 'acts', children: [t.time ? jsx('small', { children: `${t.time} PT` }, 's') : null, jsx(LinkOut, { url: t.url, label: 'Open on X' }, 'l')] }, 'k')] }, `team${i}`)))) : null,
         sec('plugin-update', 'Official plugin updates', of('plugin-update'), h('div', { className: 'sh-sec' }, ...of('plugin-update').map((d) => row(d)))),
         sec('catalog', 'New in the catalog', cat, h('div', { className: 'chips' },
           ...(all ? cat : cat.slice(0, CATALOG_FOLD)).map((d) => jsx('span', { className: 'chip', role: 'button', tabIndex: 0, title: `${d.detail || d.title}\nClick: open the catalog entry · Shift-click: copy the install command`,
