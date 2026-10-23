@@ -239,6 +239,19 @@ const CSS = `
 .nc .cell::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--line)}
 .nc .c-release::before{background:var(--ink)}.nc .c-launch::before{background:var(--blue)}.nc .c-model::before{background:var(--teal)}.nc .c-news::before{background:var(--gold)}.nc .c-build::before{background:var(--grey)}
 .nc .cell.today{border:2px solid var(--blue);box-shadow:0 0 0 4px rgba(10,76,255,.12)}
+/* release days: inverse ink card; release and 150K+ days get one shine sweep */
+.nc .cell.rel{background:var(--ink);border-color:var(--ink);color:#fff}
+.nc .cell.rel::before{background:var(--blue)}
+.nc .cell.rel .dn,.nc .cell.rel .head,.nc .cell.rel .tag{color:#fff}
+.nc .cell.rel .dd,.nc .cell.rel .foot{color:#9aa3b5}
+.nc .cell.rel .foot .pr{color:#8fb0ff}
+.nc .cell.rel .b-release{background:#fff;color:var(--ink)}
+.nc .cell.rel .head code{background:#ffffff26;color:#fff}
+.nc .cell.rel.today{border-color:var(--blue)}
+.nc .cell.shine::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.45) 50%,transparent 65%);transform:translateX(-120%);animation:nc-shine 1.6s .5s ease-out 1 forwards;pointer-events:none}
+.nc .cell.rel.shine::after{background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.22) 50%,transparent 65%)}
+@keyframes nc-shine{to{transform:translateX(120%)}}
+@media (prefers-reduced-motion:reduce){.nc .cell.shine::after{display:none}}
 .nc .cell.sel{border:2px solid var(--ink)}
 .nc .cell.up{background:transparent;border-style:dashed;cursor:default}
 .nc .cell.up:hover{box-shadow:none;transform:none}
@@ -327,7 +340,9 @@ function typesOf(m) {
 function DayCell({ m, n, today, future, selected, onPick }) {
   const types = future ? [] : typesOf(m)
   const main = types[0]
-  const cls = ['cell', main ? `c-${main}` : '', m.iso === today ? 'today' : '', future ? 'up' : '', selected ? 'sel' : ''].filter(Boolean).join(' ')
+  const rel = !future && types.includes('release')
+  const shine = !future && (rel || m.topViews >= SHINE_VIEWS)
+  const cls = ['cell', main ? `c-${main}` : '', rel ? 'rel' : '', shine ? 'shine' : '', m.iso === today ? 'today' : '', future ? 'up' : '', selected ? 'sel' : ''].filter(Boolean).join(' ')
   const by = m.xday ? `${m.xday.by || 'Nous'}${m.xday.time ? ` · ${m.xday.time}` : ''}` : m.drops.length ? 'GitHub' : ''
   return h('button', {
     type: 'button', className: cls, disabled: future, onClick: () => onPick(m.iso),
