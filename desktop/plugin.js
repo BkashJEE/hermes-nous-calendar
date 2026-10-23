@@ -6,7 +6,7 @@
 //       If it isn't mounted, the CLI through the local gateway: `hermes nous-calendar --json --compact`.
 //       An optional "On X" layer comes from a LOCAL curated file when one is configured (never fetched).
 // Alerts: one desktop notification per NEW release or official plugin (never on the first visit).
-// Look: the Hermes Daily Drops sheet: paper, ink, Hermes blue, Anton dates, hairline grid.
+// Look: the Nous Calendar sheet (the Daily Drops poster look): paper, ink, Hermes blue, Anton dates, hairline grid.
 //       Fonts ship in ./fonts (OFL); system fallbacks keep it readable if they can't load.
 
 import * as SDK from '@hermes/plugin-sdk'
@@ -505,7 +505,7 @@ function CalendarPage() {
     h('div', { className: 'scroller' }, h('div', { className: 'wrap' },
       h('header', null,
         h('div', null,
-          h('h1', null, 'Hermes ', jsx('b', { children: 'Daily Drops' })),
+          h('h1', null, 'Nous ', jsx('b', { children: 'Calendar' })),
           h('div', { className: 'sub' }, `${count} days of Hermes Agent · ${first} – ${last} · what `, h('span', null, '@NousResearch'),
             hasX || hasPosts ? [' and ', jsx('span', { children: '@Teknium' }, 't'), ' shipped, the biggest posts, and every merged PR'] : ' shipped, plus every merged PR')),
         h('div', { className: 'right' },

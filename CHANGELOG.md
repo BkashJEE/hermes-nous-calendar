@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3
+
+- The page is titled **NOUS CALENDAR** everywhere (Desktop page, web page title and link previews, README screenshots).
+
 ## 0.2.2
 
 - Post likes, replies and "quoting @…" come live from X when the posts feed is built (16 hand-captured like counts were reply counts).
