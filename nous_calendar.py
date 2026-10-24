@@ -153,6 +153,8 @@ def paged(path: str, params: dict, key: str | None = None) -> list:
     out: list = []
     for page in range(1, MAX_PAGES + 1):
         data = api(path, {**params, "per_page": 100, "page": page})
+        if data is None:  # GitHub very occasionally answers 200 with an empty/null body
+            break
         rows = data.get(key, []) if key else data
         out.extend(rows or [])
         if not rows or len(rows) < 100:
@@ -498,7 +500,7 @@ def collect(month: str | None = None, tz_name: str | None = None, force: bool = 
         for name, fn in sources:
             try:
                 drops.extend(fn())
-            except (GitHubError, KeyError, TypeError, ValueError) as e:
+            except (GitHubError, KeyError, TypeError, ValueError, AttributeError) as e:
                 errors[name] = str(e)[:200]
         if mode != "anonymous":
             try:
