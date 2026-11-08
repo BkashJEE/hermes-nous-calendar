@@ -355,5 +355,43 @@ class Plugin(unittest.TestCase):
         self.assertEqual(reg.register_skill.call_args[0][0], "nous-calendar")
 
 
+class Utf8Pipes(unittest.TestCase):
+    """gh/`hermes` output is decoded as UTF-8: the Windows locale default (cp1252) kills the pipe reader
+    and hands back rc=0 with an empty stdout — the crash behind issue #3."""
+
+    PAYLOAD = '{"total_count": 0, "items": [], "note": "caf\u00e9 \u2018drop\u2019"}'
+
+    @staticmethod
+    def _fake_run(seen, payload):
+        def fake(cmd, **kwargs):
+            seen.append(kwargs)
+            if kwargs.get("encoding") is None:
+                # Byte 0x90 is undefined in cp1252, so the reader thread dies on it and subprocess
+                # returns rc=0 with an empty stdout (no exception reaches the caller).
+                return n.subprocess.CompletedProcess(cmd, 0, "", "")
+            return n.subprocess.CompletedProcess(cmd, 0, payload, "")
+
+        return fake
+
+    def test_gh_output_is_decoded_as_utf8(self):
+        seen = []
+        with mock.patch.object(n.subprocess, "run", self._fake_run(seen, self.PAYLOAD)), \
+                mock.patch.object(n, "auth_mode", return_value="gh"), \
+                mock.patch.object(n.shutil, "which", return_value="gh"):
+            out = n._api("search/issues", {"q": "is:issue"})
+        self.assertEqual(out["note"], "caf\u00e9 \u2018drop\u2019")
+        self.assertEqual(seen[0]["encoding"], "utf-8")
+        self.assertEqual(seen[0]["errors"], "replace")
+
+    def test_hermes_version_probe_is_decoded_as_utf8(self):
+        seen = []
+        with mock.patch.object(n.subprocess, "run", self._fake_run(seen, "hermes caf\u00e9\u2019 v9.8.7\n")), \
+                mock.patch.object(n.shutil, "which", return_value="hermes"), \
+                mock.patch.dict(sys.modules, {"hermes_cli": None}):
+            self.assertEqual(n.installed_version(), "9.8.7")
+        self.assertEqual(seen[0]["encoding"], "utf-8")
+        self.assertEqual(seen[0]["errors"], "replace")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
