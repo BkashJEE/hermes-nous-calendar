@@ -130,7 +130,8 @@ def _api(path: str, params: dict | None = None):
     full = f"{path}?{query}" if query else path
     if auth_mode() == "gh":
         r = subprocess.run([shutil.which("gh"), "api", "-X", "GET", "-H", "Accept: application/vnd.github+json", full],
-                           capture_output=True, text=True, timeout=60)
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=60)
         if r.returncode != 0:
             msg = (r.stderr or r.stdout).strip()
             raise GitHubError(msg.splitlines()[-1] if msg else f"gh api {path} failed")
@@ -412,7 +413,8 @@ def installed_version() -> str | None:
     if not exe:
         return None
     try:
-        out = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=20).stdout
+        out = subprocess.run([exe, "--version"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=20).stdout
     except (OSError, subprocess.TimeoutExpired):
         return None
     m = re.search(r"v(\d+\.\d+\.\d+)", out or "")
