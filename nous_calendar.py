@@ -619,18 +619,19 @@ def save_cursor(c: dict) -> None:
 
 
 def _recent_drops(tz_name: str | None) -> list[dict]:
+    # No force: the month cache is already re-read when older than FRESH_S (15 min), the same cadence as the cron.
     today = dt.datetime.now(zone(tz_name)).date()
-    data = collect(None, tz_name, force=True)
+    data = collect(None, tz_name)
     drops = list(data["drops"])
     if today.day <= 1:
         prev = (today.replace(day=1) - dt.timedelta(days=1)).strftime("%Y-%m")
-        drops = collect(prev, tz_name, force=True)["drops"] + drops
+        drops = collect(prev, tz_name)["drops"] + drops
     return [d for d in drops if d["kind"] in ALERT_KINDS]
 
 
-def new_drops(cursor: dict, tz_name: str | None = None) -> list[dict]:
+def new_drops(cursor: dict, tz_name: str | None = None, drops: list[dict] | None = None) -> list[dict]:
     """Drops not announced yet. A first run (empty cursor) announces nothing: it only records what exists."""
-    drops = _recent_drops(tz_name)
+    drops = _recent_drops(tz_name) if drops is None else drops
     seen = set(cursor.get("seen") or [])
     if not cursor.get("last_at"):
         return []
@@ -670,8 +671,9 @@ def alerts_once(tz_name: str | None = None) -> str:
     """What a cron run prints: the new drops as text, or nothing at all when there are none."""
     cursor = load_cursor()
     first = not cursor.get("last_at")
-    fresh = new_drops(cursor, tz_name)
-    drops = _recent_drops(tz_name) if first else fresh
+    recent = _recent_drops(tz_name)                      # one GitHub read per run
+    fresh = new_drops(cursor, tz_name, drops=recent)
+    drops = recent if first else fresh
     ids = [d["id"] for d in drops]
     cursor["seen"] = (list(cursor.get("seen") or []) + ids)[-CURSOR_KEEP:]
     cursor["last_at"] = iso_z(dt.datetime.now(dt.timezone.utc))

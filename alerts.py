@@ -21,7 +21,7 @@ PLUGIN_DIR = Path(__file__).resolve().parent
 SCRIPT_NAME = "nous-alerts.sh"
 JOB_NAME = "nous-alerts"
 SCHEDULE = "every 15m"
-TIMEOUT_S = 90
+TIMEOUT_S = 600          # a first read of a month from GitHub can take a few minutes
 
 
 def hermes_home() -> Path:
