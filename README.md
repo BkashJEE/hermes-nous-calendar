@@ -39,6 +39,35 @@ gh auth login
 
 Without it the calendar still works on GitHub's anonymous limit (60 requests an hour): catalog additions are read from commit messages and the merged-PR counts are left out.
 
+## Alerts on every device
+
+Turn it on once and every new Nous drop (release, official plugin, feature, catalog additions) reaches **every
+channel connected to your Hermes** within 15 minutes: Telegram, Discord, Slack, WhatsApp, Signal, your phone,
+wherever Hermes talks to you. Faster than waiting for the Discord announcement, and it costs **zero model tokens**.
+
+```bash
+hermes nous-calendar alerts on      # or the switch on the Nous Calendar page in Desktop
+hermes nous-calendar alerts status
+hermes nous-calendar alerts off
+```
+
+What `on` does, and nothing else: writes `~/.hermes/scripts/nous-alerts.sh` (runs `nous_calendar.py --alerts`) and
+creates one no-agent cron job, `nous-alerts`, every 15 minutes with `--deliver all`, by running the `hermes cron`
+CLI. The script prints only drops newer than its last run, so Hermes sends a message only when something shipped.
+The first check records what already exists and sends nothing. `off` removes the job and the script.
+
+A message looks like:
+
+```
+Nous shipped · Release v0.23.1
+Hermes Agent v0.23.1 — Hearth fixes
+https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.1
+
+Nous shipped · Official plugin camofox
+Camofox browser backend moves out of core into a plugin
+hermes plugins install camofox --enable
+```
+
 ## It keeps itself current
 
 You don't have to open anything for it to stay up to date.

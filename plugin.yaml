@@ -1,8 +1,8 @@
 name: hermes-nous-calendar
-version: "0.2.3"
+version: "0.3.0"
 manifest_version: 2
 api_version: 1
-description: "Never miss a Nous drop. A month calendar of what Nous Research shipped for Hermes Agent, day by day: releases, new official plugins, new catalog plugins, feature PRs and official-plugin updates, with the day's merged-PR count. Desktop page /nous-calendar with a new-drops chip and a notification for releases and new official plugins, /nous-calendar in chat, and `hermes nous-calendar`. Reads public GitHub data and a public feed of the biggest Hermes posts on X; no model calls."
+description: "Never miss a Nous drop. A month calendar of what Nous Research shipped for Hermes Agent, day by day: releases, new official plugins, new catalog plugins, feature PRs and official-plugin updates, with the day's merged-PR count. Desktop page /nous-calendar with a new-drops chip and a notification for releases and new official plugins, /nous-calendar in chat, and `hermes nous-calendar`. Reads public GitHub data and a public feed of the biggest Hermes posts on X; no model calls. Optional Nous Alerts (`hermes nous-calendar alerts on`): every new Nous drop reaches every channel connected to Hermes within 15 minutes with zero model tokens. Disclosure — alerts on writes ~/.hermes/scripts/nous-alerts.sh and creates one no-agent cron job (nous-alerts, every 15 min, --deliver all) by running the hermes cron CLI; alerts off removes both; the first check records what exists and sends nothing."
 author: Bikash Joshi
 license: MIT
 homepage: https://github.com/BkashJEE/hermes-nous-calendar

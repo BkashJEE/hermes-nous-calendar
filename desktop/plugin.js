@@ -239,7 +239,7 @@ const CSS = `
 .nc .sub{font:500 17px var(--body);color:var(--slate);margin-top:8px}
 .nc .sub span{color:var(--blue);font-weight:700}
 .nc .right{text-align:right;display:grid;gap:8px;justify-items:end;flex:none}
-.nc .handle{font:700 22px var(--mono);background:var(--ink);color:#fff;padding:9px 16px;border-radius:10px}
+.nc .handle{font:700 22px var(--mono);background:var(--ink);color:#fff;padding:9px 16px;border-radius:10px;text-decoration:none;cursor:pointer;transition:background .15s}.nc .handle:hover{background:var(--accent,#0a4cff)}
 .nc .meta{font:500 13px var(--mono);color:var(--muted)}
 .nc .ctrl{display:flex;gap:6px;align-items:center}
 .nc .ib{border:1px solid var(--line);background:var(--card);border-radius:8px;min-width:32px;height:30px;padding:0 10px;cursor:pointer;font:700 12px var(--mono);color:var(--ink)}
@@ -275,6 +275,11 @@ const CSS = `
 .nc .out a{color:var(--blue)!important;text-decoration:none;border-bottom:1px solid currentColor}
 .nc .bul .out{font:600 15px var(--body)}
 .nc .behind .out,.nc .behind .out a{color:#fff!important}
+.nc .alerts{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:1.5px solid var(--ink);border-radius:14px;padding:12px 18px;background:var(--paper,#fff)}
+.nc .alerts .big{font:400 24px/1 var(--display);letter-spacing:.01em}
+.nc .alerts .what{flex:1;min-width:220px;font:500 13.5px/1.4 var(--body);color:var(--slate)}
+.nc .alerts .what code{font:600 12px var(--mono);background:#eef2ff;padding:1px 5px;border-radius:4px}
+.nc .alerts .lines{font:500 12px/1.45 var(--mono);color:var(--muted);white-space:pre-wrap;flex-basis:100%}
 .nc .err{font:500 13px var(--body);color:#b42318}
 .nc .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
 .nc .cell{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px 9px;display:flex;flex-direction:column;gap:6px;overflow:hidden;min-height:192px;min-width:0;text-align:left;cursor:pointer;transition:box-shadow .15s,transform .15s}
@@ -465,6 +470,32 @@ function GetIt() {
     h('button', { type: 'button', className: 'cmd', onClick: async () => { if (await copyText(INSTALL)) { setDone(true); setTimeout(() => setDone(false), 2000) } } }, done ? 'Copied ✓' : 'Copy install command'))
 }
 
+// Nous Alerts: every new drop to every connected channel, through one no-agent cron job. The switch calls the
+// plugin's backend, which runs `hermes nous-calendar alerts on|off` (writes one script, creates or removes one cron job).
+function AlertsSwitch() {
+  const [st, setSt] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [lines, setLines] = useState([])
+  const load = () => pluginCtx.rest('/alerts').then(setSt).catch(() => setSt({ error: true }))
+  useEffect(() => { load() }, [])
+  const toggle = () => {
+    setBusy(true)
+    pluginCtx.rest('/alerts', { method: 'POST', body: { on: !(st && st.on) } })
+      .then((r) => { setLines(r.lines || []); setSt(r.status || null) })
+      .catch((e) => setLines([String(e && e.message || e)]))
+      .finally(() => setBusy(false))
+  }
+  if (!st || st.error) return null
+  const on = Boolean(st.on)
+  return h('div', { className: 'alerts' },
+    h('div', { className: 'big' }, on ? 'Alerts on every device: ON' : 'Alerts on every device'),
+    h('div', { className: 'what' }, on
+      ? `Every new Nous drop reaches every channel connected to Hermes within 15 minutes. Zero model tokens.${st.last_checked ? ` Last check ${new Date(st.last_checked).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ''}`
+      : ['Get every new Nous release and plugin on your phone, Telegram, Discord, Slack: wherever Hermes talks to you. ', 'One no-agent cron job, zero model tokens. Same as ', h('code', null, 'hermes nous-calendar alerts on'), '.']),
+    h('button', { type: 'button', className: 'cmd', disabled: busy, onClick: toggle }, busy ? 'Working…' : on ? 'Turn off' : 'Turn on'),
+    lines.length ? h('div', { className: 'lines' }, lines.join('\n')) : null)
+}
+
 function CalendarPage() {
   const s = useStore()
   const [pick, setPick] = useState(null)
@@ -509,7 +540,7 @@ function CalendarPage() {
           h('div', { className: 'sub' }, `${count} days of Hermes Agent · ${first} – ${last} · what `, h('span', null, '@NousResearch'),
             hasX || hasPosts ? [' and ', jsx('span', { children: '@Teknium' }, 't'), ' shipped, the biggest posts, and every merged PR'] : ' shipped, plus every merged PR')),
         h('div', { className: 'right' },
-          h('div', { className: 'handle' }, '@BkashJosi'),
+          h('a', { className: 'handle', href: 'https://x.com/BkashJosi', title: '@BkashJosi on X', onClick: (e) => { e.preventDefault(); openLink('https://x.com/BkashJosi') } }, '@BkashJosi'),
           h('div', { className: 'meta' }, `Days in ${d ? d.tz : TZ} · updated through ${updated}`),
           h('div', { className: 'ctrl' },
             h('button', { type: 'button', className: 'ib', onClick: () => go(-1), 'aria-label': 'Previous month' }, '←'),
@@ -538,6 +569,7 @@ function CalendarPage() {
           d.you.behind.length > 4 ? ` and ${d.you.behind.length - 4} more` : '', '. Read the notes, then update.'),
         h('button', { type: 'button', className: 'cmd', onClick: () => copyText('hermes update') }, 'Copy: hermes update')) : null,
       !isWeb && d && d.you && d.you.behind && !d.you.behind.length ? h('div', { className: 'uptodate' }, `✓ You're on the latest Hermes release, ${d.you.installed}.`) : null,
+      !isWeb && d ? jsx(AlertsSwitch, {}) : null,
       d ? h('main', { className: 'grid' }, ...isos.map((iso, i) => jsx(DayCell, { m: models[iso], n: i + 1, today, future: iso > today, selected: pick === iso, onPick: setPick }, iso))) : null,
       d ? h('footer', null,
         h('div', { className: 'legend' }, ...[['release', 'Release', 'var(--ink)'], ['launch', 'Launch', 'var(--blue)'], ['model', 'Free model', 'var(--teal)'], ['news', 'News', 'var(--gold)'], ['build', 'Build (GitHub)', 'var(--grey)']]

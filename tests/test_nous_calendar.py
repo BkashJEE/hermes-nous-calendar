@@ -85,6 +85,59 @@ class Base(unittest.TestCase):
         self.tmp.cleanup()
 
 
+class Alerts(Base):
+    """Nous Alerts: nothing on the first run, each new drop once, catalog folded, nothing when quiet."""
+
+    def _release(self, tag, when):
+        self.gh.releases = [{"tag_name": tag, "name": f"Hermes Agent {tag}", "published_at": when, "html_url": f"https://github.com/x/releases/{tag}", "body": "notes"}]
+
+    def setUp(self):
+        super().setUp()
+        for extra in (mock.patch.object(n, "CURSOR", Path(self.tmp.name) / "alerts-cursor.json"), mock.patch.object(n, "FRESH_S", 0)):
+            extra.start()
+            self.patches.append(extra)
+        self.now = dt.datetime.now(dt.timezone.utc)
+        self.gh.listings = {}
+        self.gh.before = []
+
+    def test_first_run_records_and_prints_nothing(self):
+        self._release("v9.9.0", n.iso_z(self.now - dt.timedelta(hours=1)))
+        self.assertEqual(n.alerts_once(LA), "")
+        c = n.load_cursor()
+        self.assertIn("release:v9.9.0", c["seen"])
+        self.assertTrue(c["last_at"])
+
+    def test_new_release_alerts_once_then_quiet(self):
+        n.alerts_once(LA)                                   # first run: record only
+        self._release("v9.9.1", n.iso_z(self.now))
+        out = n.alerts_once(LA)
+        self.assertIn("Nous shipped · Release v9.9.1", out)
+        self.assertIn("https://github.com/x/releases/v9.9.1", out)
+        self.assertEqual(n.alerts_once(LA), "")
+
+    def test_catalog_additions_fold_into_one_line(self):
+        n.alerts_once(LA)
+        when = n.iso_z(self.now)
+        self.gh.catalog_commits = [commit("abc", when, "feat(plugin-catalog): add alpha")]
+        self.gh.listings = {"abc": ["alpha", "beta", "gamma"], "abc~1": []}
+        self.gh.entries = {x: entry_yaml("community", f"{x} does things.") for x in ("alpha", "beta", "gamma")}
+        out = n.alerts_once(LA)
+        self.assertIn("Nous catalog · 3 new plugins", out)
+        self.assertEqual(out.count("Nous catalog"), 1)
+
+
+class Installer(unittest.TestCase):
+    def test_dry_run_shows_exact_command_and_writes_nothing(self):
+        import alerts as a
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"HERMES_HOME": tmp}):
+            lines = a.turn_on(dry_run=True)
+            self.assertTrue(lines[0].startswith(f"would write {tmp}/scripts/nous-alerts.sh"))
+            self.assertIn("cron create every 15m --name nous-alerts --no-agent --script nous-alerts.sh --deliver all", lines[1])
+            self.assertFalse(Path(tmp, "scripts").exists())
+            self.assertIn("nous_calendar.py", a.script_text())
+            self.assertFalse(a.status()["on"])
+
+
 class Catalog(Base):
     def test_exact_diff_finds_added_plugins_and_their_tier(self):
         g = self.gh

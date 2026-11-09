@@ -20,6 +20,13 @@ released, whether a feature or plugin has landed yet, or asks for a Hermes updat
 6. If the tool returns `errors`, say which part couldn't be read (usually GitHub rate limits; `gh auth login`
    fixes them).
 
+## Alerts on every device
+
+If the user wants to hear about Nous drops as they happen, on every channel Hermes is connected to, tell them to
+run `hermes nous-calendar alerts on` (or use the switch on the Nous Calendar page in Desktop). It creates one
+no-agent cron job that costs no model tokens and sends a message only when something new shipped.
+`hermes nous-calendar alerts off` removes it. Don't run it for them without their yes.
+
 ## A daily digest, only if the user asks
 
 The Desktop page (Nous Calendar in the sidebar) already updates itself. If the user wants a message every

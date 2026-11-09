@@ -21,7 +21,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
-VERSION = "0.2.3"
+VERSION = "0.3.0"
 router = APIRouter()
 log = logging.getLogger("hermes_nous_calendar")
 
@@ -81,3 +81,28 @@ async def month(month: str | None = Query(default=None), tz: str | None = Query(
     if tz is not None and not re.fullmatch(r"[A-Za-z0-9_+\-/]{1,64}", tz):
         raise HTTPException(status_code=400, detail="tz must be an IANA zone name like America/Los_Angeles")
     return await asyncio.to_thread(_cal().collect, month, tz, refresh)
+
+
+# ── Nous Alerts (every device, zero tokens): the page's switch calls these ──────────────────
+def _alerts():
+    import importlib.util
+    key = "hermes_nous_calendar_alerts"
+    mod = sys.modules.get(key)
+    if mod is None:
+        spec = importlib.util.spec_from_file_location(key, Path(__file__).resolve().parent.parent / "alerts.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[key] = mod
+        spec.loader.exec_module(mod)
+    return mod
+
+
+@router.get("/alerts")
+async def alerts_status():
+    return await asyncio.to_thread(_alerts().status)
+
+
+@router.post("/alerts")
+async def alerts_toggle(body: dict):
+    a = _alerts()
+    lines = await asyncio.to_thread(a.turn_on if body.get("on") else a.turn_off)
+    return {"ok": True, "lines": lines, "status": await asyncio.to_thread(a.status)}

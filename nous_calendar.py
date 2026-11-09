@@ -41,7 +41,7 @@ import urllib.request
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-VERSION = "0.2.3"
+VERSION = "0.3.0"
 CORE = "NousResearch/hermes-agent"
 OFFICIAL = "NousResearch/hermes-official-plugins"
 CATALOG_DIR = "plugin-catalog"
@@ -49,6 +49,7 @@ CATALOG_DIR = "plugin-catalog"
 HERMES = Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
 DATA = HERMES / "plugin-data" / "hermes-nous-calendar"
 CACHE = DATA / "cache.json"
+CURSOR = DATA / "alerts-cursor.json"   # what Nous Alerts has already announced
 FRESH_S = 15 * 60          # the current month is re-read at most this often
 SEARCH_PACE_S = 2.1       # GitHub search: 30 requests a minute
 MAX_PAGES = 10             # GitHub caps search at 1,000 results; 10 pages of 100
@@ -406,14 +407,7 @@ def _semver(text: str) -> tuple[int, ...] | None:
 
 
 def installed_version() -> str | None:
-    """The Hermes Agent version on this machine: imported when running inside Hermes, else `hermes --version`."""
-    try:
-        import hermes_cli  # type: ignore
-        v = getattr(hermes_cli, "__version__", None)
-        if v:
-            return str(v)
-    except Exception:
-        pass
+    """The Hermes Agent version on this machine, from `hermes --version` (no private core imports)."""
     exe = shutil.which("hermes")
     if not exe:
         return None
@@ -598,6 +592,95 @@ def background_refresh() -> bool:
     return True
 
 
+# ── Nous Alerts: only what is new since the last run (for a no-agent cron that fans out everywhere) ──
+ALERT_KINDS = ("release", "official", "feature", "plugin-update", "catalog")
+CURSOR_KEEP = 300            # ids remembered; older drops can't come back anyway
+CURSOR_GRACE_S = 86400       # a drop dated earlier than this before last_at is treated as a cache rewrite, not news
+
+
+def load_cursor() -> dict:
+    try:
+        c = json.loads(CURSOR.read_text())
+        if c.get("v") == 1 and isinstance(c.get("seen"), list):
+            return c
+    except (OSError, ValueError):
+        pass
+    return {"v": 1, "seen": [], "last_at": "", "updated": 0, "runs": 0}
+
+
+def save_cursor(c: dict) -> None:
+    try:
+        DATA.mkdir(parents=True, exist_ok=True)
+        tmp = CURSOR.with_suffix(".tmp")
+        tmp.write_text(json.dumps(c))
+        tmp.replace(CURSOR)
+    except OSError:
+        pass
+
+
+def _recent_drops(tz_name: str | None) -> list[dict]:
+    today = dt.datetime.now(zone(tz_name)).date()
+    data = collect(None, tz_name, force=True)
+    drops = list(data["drops"])
+    if today.day <= 1:
+        prev = (today.replace(day=1) - dt.timedelta(days=1)).strftime("%Y-%m")
+        drops = collect(prev, tz_name, force=True)["drops"] + drops
+    return [d for d in drops if d["kind"] in ALERT_KINDS]
+
+
+def new_drops(cursor: dict, tz_name: str | None = None) -> list[dict]:
+    """Drops not announced yet. A first run (empty cursor) announces nothing: it only records what exists."""
+    drops = _recent_drops(tz_name)
+    seen = set(cursor.get("seen") or [])
+    if not cursor.get("last_at"):
+        return []
+    floor = parse_ts(cursor["last_at"]) - dt.timedelta(seconds=CURSOR_GRACE_S)
+    return [d for d in drops if d["id"] not in seen and parse_ts(d["at"]) >= floor]
+
+
+def render_alerts(drops: list[dict]) -> str:
+    """One short block per drop, the way it should read on a phone. Catalog additions fold into one line."""
+    blocks = []
+    catalog = [d for d in drops if d["kind"] == "catalog"]
+    for d in drops:
+        if d["kind"] == "catalog":
+            continue
+        if d["kind"] == "release":
+            head = f"Nous shipped · Release {d['title'].replace('Hermes Agent ', '')}"
+            body = [d["detail"]] if d.get("detail") and d["detail"] != d["title"] else []
+            body.append(d.get("url") or "")
+        elif d["kind"] == "official":
+            head = f"Nous shipped · Official plugin {d['title']}"
+            body = [d.get("detail") or "", f"hermes plugins install {d['title']} --enable"]
+        elif d["kind"] == "feature":
+            head = f"Nous merged · {d['title']}"
+            body = [d.get("url") or ""]
+        else:
+            head = f"Official plugin update · {d['title']}"
+            body = [d.get("detail") or "", d.get("url") or ""]
+        blocks.append("\n".join([head] + [b for b in body if b]))
+    if catalog:
+        names = ", ".join(d["title"] for d in catalog[:6]) + (f" +{len(catalog) - 6} more" if len(catalog) > 6 else "")
+        blocks.append(f"Nous catalog · {len(catalog)} new plugin{'s' if len(catalog) != 1 else ''}: {names}\n"
+                      "https://github.com/NousResearch/hermes-agent/tree/main/plugin-catalog")
+    return "\n\n".join(blocks)
+
+
+def alerts_once(tz_name: str | None = None) -> str:
+    """What a cron run prints: the new drops as text, or nothing at all when there are none."""
+    cursor = load_cursor()
+    first = not cursor.get("last_at")
+    fresh = new_drops(cursor, tz_name)
+    drops = _recent_drops(tz_name) if first else fresh
+    ids = [d["id"] for d in drops]
+    cursor["seen"] = (list(cursor.get("seen") or []) + ids)[-CURSOR_KEEP:]
+    cursor["last_at"] = iso_z(dt.datetime.now(dt.timezone.utc))
+    cursor["updated"] = time.time()
+    cursor["runs"] = int(cursor.get("runs") or 0) + 1
+    save_cursor(cursor)
+    return "" if first else render_alerts(fresh)
+
+
 # ── text output ─────────────────────────────────────────────────────────────
 def render(data: dict, days: int | None = None) -> str:
     drops = data["drops"]
@@ -634,10 +717,13 @@ def add_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("--week", action="store_true", help="only the last 7 days")
     p.add_argument("--refresh", action="store_true", help="ignore the 15-minute cache")
     p.add_argument("--compact", action="store_true", help="with --json: catalog additions as names only (fits cli.exec's output cap)")
+    p.add_argument("--alerts", action="store_true", help="print only drops new since the last --alerts run (empty when none); for a no-agent cron")
 
 
 def dispatch(args) -> str:
     month, tz = getattr(args, "month", None), getattr(args, "tz", None)
+    if getattr(args, "alerts", False):
+        return alerts_once(tz)
     data = collect(month, tz, bool(getattr(args, "refresh", False)))
     if getattr(args, "json", False):
         return json.dumps(compact(data) if getattr(args, "compact", False) else data)
@@ -654,7 +740,9 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="nous-calendar", description=__doc__.split("\n")[0])
     add_arguments(p)
     try:
-        print(dispatch(p.parse_args(argv)))
+        out = dispatch(p.parse_args(argv))
+        if out:
+            print(out)
     except ValueError as e:
         print(f"nous-calendar: {e}", file=sys.stderr)
         return 2

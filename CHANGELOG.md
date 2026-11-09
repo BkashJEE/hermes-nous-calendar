@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- **Nous Alerts**: `hermes nous-calendar alerts on` (or the switch on the Desktop page) sends every new Nous drop to
+  every channel connected to Hermes within 15 minutes, with zero model tokens: one no-agent cron job runs
+  `nous_calendar.py --alerts`, which prints only drops newer than its last run (nothing on the first run).
+- `installed_version()` no longer imports Hermes internals; it reads `hermes --version`.
+
 ## 0.2.3
 
 - The page is titled **NOUS CALENDAR** everywhere (Desktop page, web page title and link previews, README screenshots).

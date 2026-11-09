@@ -41,11 +41,27 @@ def slash_command(raw_args: str) -> str:
 def setup_argparse(subparser) -> None:
     _cal().add_arguments(subparser)
     subparser.set_defaults(func=handle_cli)
+    subs = subparser.add_subparsers(dest="sub")
+    a = subs.add_parser("alerts", help="Nous Alerts: new Nous drops on every connected device (no-agent cron, zero tokens)")
+    a.add_argument("action", choices=["on", "off", "status", "run"])
+    a.add_argument("--dry-run", action="store_true", help="with on: show what would be written and run")
+    a.set_defaults(func=handle_cli)
 
 
 def handle_cli(args) -> None:
+    if getattr(args, "sub", None) == "alerts":
+        from . import alerts
+        act = args.action
+        if act == "status":
+            print(json.dumps(alerts.status(), indent=2))
+            return
+        lines = alerts.turn_on(dry_run=bool(getattr(args, "dry_run", False))) if act == "on" else alerts.turn_off() if act == "off" else alerts.run_now()
+        print("\n".join(lines))
+        return
     try:
-        print(_cal().dispatch(args))
+        out = _cal().dispatch(args)
+        if out:
+            print(out)
     except Exception as e:  # the page shows this instead of crashing
         if getattr(args, "json", False):
             sys.stdout.write(json.dumps({"error": f"nous-calendar failed: {type(e).__name__}: {e}"}) + "\n")
